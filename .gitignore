@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-electron/
+release/
+*.exe
+.claude/
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
