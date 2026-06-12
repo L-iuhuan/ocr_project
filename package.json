@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
+    "parse": "electron . --headless parse",
     "vite:dev": "vite",
     "electron:dev": "electron ."
   },

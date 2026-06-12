@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, readFileSy
 import { basename, dirname, join } from 'path';
 import AdmZip from 'adm-zip';
 import axios from 'axios';
-import { Chunk, GlobalProgress, Task, ProviderType } from './types';
+import { AppSettings, Chunk, GlobalProgress, Task, ProviderType } from './types';
 import { IProvider, ParsedChunkResult } from './providers/i-provider';
 import { getProvider } from './providers/provider-registry';
 import { incrementFailedCount, incrementPageCount } from './page-counter';
@@ -16,7 +16,9 @@ type TaskCallback = (tasks: Task[]) => void;
 type LogLevel = 'info' | 'warn' | 'error' | 'success';
 type LogCallback = (entry: { timestamp: string; level: LogLevel; message: string; jobId?: string }) => void;
 type ProgressCallback = (progress: GlobalProgress & { chunkTotal: number; chunkCompleted: number }) => void;
+type WorkerOptions = { persistTasks?: boolean; settingsProvider?: () => AppSettings };
 
+const TERMINAL_STATES = ['done', 'failed', 'cancelled'];
 const RUNNING_STATES = ['preprocessing', 'uploading', 'running', 'downloading', 'merging'];
 const RETRYABLE_CHUNK_STATES = ['pending', 'failed'];
 const MAX_CONSECUTIVE_FAILS_BEFORE_FALLBACK = 2;
@@ -56,12 +58,16 @@ class TaskWorker {
   private onUpdate?: TaskCallback;
   private onLog?: LogCallback;
   private onProgress?: ProgressCallback;
+  private persistTasks = true;
+  private settingsProvider: () => AppSettings = loadSettings;
   private abortControllers = new Map<string, AbortController>();
 
-  configure(callbacks: { onUpdate: TaskCallback; onLog: LogCallback; onProgress: ProgressCallback }): void {
+  configure(callbacks: { onUpdate: TaskCallback; onLog: LogCallback; onProgress: ProgressCallback }, options: WorkerOptions = {}): void {
     this.onUpdate = callbacks.onUpdate;
     this.onLog = callbacks.onLog;
     this.onProgress = callbacks.onProgress;
+    this.persistTasks = options.persistTasks !== false;
+    this.settingsProvider = options.settingsProvider || loadSettings;
     this.emitProgress();
   }
 
@@ -111,6 +117,24 @@ class TaskWorker {
     this.queue.push(...tasks);
     this.emitUpdate();
     this.processQueue();
+  }
+
+  runTasksOnce(tasks: Task[]): Promise<Task[]> {
+    const ids = new Set(tasks.map(t => t.jobId));
+    return new Promise(resolve => {
+      const previousOnUpdate = this.onUpdate;
+      const finishIfDone = (allTasks: Task[]) => {
+        previousOnUpdate?.(allTasks);
+        const selected = allTasks.filter(t => ids.has(t.jobId));
+        if (selected.length === ids.size && selected.every(t => TERMINAL_STATES.includes(t.state))) {
+          this.onUpdate = previousOnUpdate;
+          resolve(selected);
+        }
+      };
+      this.onUpdate = finishIfDone;
+      this.addTasks(tasks);
+      finishIfDone(this.queue);
+    });
   }
 
   pause(): void {
@@ -732,7 +756,7 @@ class TaskWorker {
   private async finalizeTaskOutputs(task: Task, partial: boolean, doneChunks: Chunk[]): Promise<void> {
     ensureDir(task.outputDir);
 
-    const settings = loadSettings();
+    const settings = this.settingsProvider();
 
     // Image output dir: default follows outputDir/images/.
     // If user set it to the same as outputDir, auto-append /images.
@@ -834,10 +858,12 @@ class TaskWorker {
   }
 
   private emitUpdate(): void {
-    const ok = saveTasks(this.queue, []);
-    if (!ok && this.onLog) {
-      // Log a warning if persistence fails (e.g. disk full)
-      this.log('任务状态保存失败（磁盘可能已满）', 'warn');
+    if (this.persistTasks) {
+      const ok = saveTasks(this.queue, []);
+      if (!ok && this.onLog) {
+        // Log a warning if persistence fails (e.g. disk full)
+        this.log('任务状态保存失败（磁盘可能已满）', 'warn');
+      }
     }
     this.onUpdate?.(this.queue);
   }

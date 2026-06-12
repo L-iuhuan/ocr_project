@@ -1,9 +1,12 @@
 ﻿import { app, BrowserWindow, Menu } from 'electron';
 import { join } from 'path';
 import { registerIpcHandlers } from './ipc-handlers';
+import { parseHeadlessArgs } from './headless-args';
+import { runHeadlessParse, stopHeadlessServices } from './headless-runner';
 import { pythonBridge } from './python-bridge';
 
 let mainWindow: BrowserWindow | null = null;
+let isHeadlessRun = false;
 
 function createWindow() {
   // Remove default File/Edit menu - useless for our productivity tool
@@ -42,7 +45,38 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  const headless = parseHeadlessArgs(process.argv);
+  if (headless.mode === 'help') {
+    console.log(headless.text);
+    app.exit(0);
+    return;
+  }
+  if (headless.mode === 'error') {
+    console.error(headless.message + '\n\n' + headless.text);
+    app.exit(2);
+    return;
+  }
+  if (headless.mode === 'parse') {
+    isHeadlessRun = true;
+    const { code, summary } = await runHeadlessParse(headless.options).catch(err => ({
+      code: 1,
+      summary: {
+        ok: false,
+        total: 0,
+        completed: 0,
+        failed: 0,
+        cancelled: 0,
+        skipped: [err.message || String(err)],
+        tasks: [],
+      },
+    }));
+    await stopHeadlessServices().catch(() => {});
+    if (headless.options.json) console.log(JSON.stringify(summary, null, 2));
+    app.exit(code);
+    return;
+  }
+
   // Clean up stale _ocrflow_tmp dirs left over from previous sessions
   try {
     const { readdirSync, rmSync, existsSync } = require('fs');
@@ -71,6 +105,6 @@ app.on('before-quit', () => {
 });
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (!isHeadlessRun && BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
