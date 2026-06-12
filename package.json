@@ -8,17 +8,21 @@
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
     "parse": "electron . --headless parse",
+    "mcp": "tsc && node dist-electron/mcp-server.js",
+    "mcp:server": "node dist-electron/mcp-server.js",
     "vite:dev": "vite",
     "electron:dev": "electron ."
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "adm-zip": "^0.5.17",
     "axios": "^1.7.0",
     "form-data": "^4.0.5",
     "pdf-lib": "^1.17.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "sharp": "^0.33.0"
+    "sharp": "^0.33.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
@@ -55,7 +59,10 @@
       "signAndEditExecutable": false
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "ocr.png",
       "category": "public.app-category.productivity"
     }
