@@ -173,6 +173,7 @@ export interface AppState {
 // ---- Electron IPC ----
 
 export interface ElectronAPI {
+  platform: string;
   winMinimize(): void;
   winMaximize(): void;
   winClose(): void;
@@ -194,6 +195,7 @@ export interface ElectronAPI {
   testProviderConnection(type: string, creds: unknown): Promise<{ ok: boolean; message: string }>;
   setProviderPriority(providers: string[]): void;
   getProviderQuotas(): Promise<unknown[]>;
+  getAppVersion(): Promise<string>;
   onTasksUpdate(cb: (tasks: unknown[]) => void): () => void;
   onLog(cb: (log: unknown) => void): () => void;
   onProgress(cb: (progress: unknown) => void): () => void;

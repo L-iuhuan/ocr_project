@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow, shell } from 'electron';
+import { app, ipcMain, dialog, BrowserWindow, shell } from 'electron';
 import axios from 'axios';
 import { scanFiles } from './pipeline/scanner';
 import { analyzeFiles } from './pipeline/preprocessor';
@@ -343,6 +343,8 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('get-quotas', () => getProviderQuotas());
+
+  ipcMain.handle('get-app-version', () => app.getVersion());
 }
 
 async function testHttpEndpoint(baseUrl: string, label: string, path: string): Promise<{ ok: boolean; message: string }> {

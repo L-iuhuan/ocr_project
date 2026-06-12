@@ -1,9 +1,15 @@
+import { useState, useEffect } from 'react';
 import { useAppState } from '../store/AppContext';
 
 const RUNNING_STATES = ['running', 'preprocessing', 'uploading', 'downloading', 'merging'];
 
 export default function StatusBar() {
   const { state } = useAppState();
+  const [appVersion, setAppVersion] = useState('');
+
+  useEffect(() => {
+    window.electronAPI?.getAppVersion?.().then(v => setAppVersion(v)).catch(() => {});
+  }, []);
   const tasks = (state.tasks || []) as any[];
   const p = state.progress || {};
   const quotaInfos = state.quotas || [];
@@ -82,7 +88,7 @@ export default function StatusBar() {
           </span>
         ))}
         <span className="div" />
-        <span>OCRFlow v1.0</span>
+        <span>OCRFlow{appVersion ? ` v${appVersion}` : ''}</span>
       </div>
     </div>
   );

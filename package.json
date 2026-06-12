@@ -1,6 +1,6 @@
 {
   "name": "ocrflow",
-  "version": "1.0.2",
+  "version": "1.1.2",
   "description": "Multi-engine OCR document batch processing tool",
   "main": "dist-electron/main.js",
   "author": "LIU HUAN",
@@ -13,7 +13,6 @@
   "dependencies": {
     "adm-zip": "^0.5.17",
     "axios": "^1.7.0",
-    "docx": "^9.7.1",
     "form-data": "^4.0.5",
     "pdf-lib": "^1.17.1",
     "react": "^18.2.0",
@@ -46,12 +45,18 @@
       "dist-electron/**",
       "python/**",
       "ocr.ico",
+      "ocr.png",
       "package.json"
     ],
     "win": {
       "target": "portable",
       "icon": "ocr.ico",
       "signAndEditExecutable": false
+    },
+    "mac": {
+      "target": ["dmg", "zip"],
+      "icon": "ocr.png",
+      "category": "public.app-category.productivity"
     }
   }
 }

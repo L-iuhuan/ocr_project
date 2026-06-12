@@ -24,7 +24,7 @@ const DEFAULT_SETTINGS: Settings = {
   concurrency: 2,
   maxChunksPerFile: 3,
   chunkSize: 20,
-  theme: 'dark',
+  theme: 'auto',
   autoStart: false,
   autoExtractZip: true,
   deleteChunkTemp: true,

@@ -25,13 +25,13 @@ interface Props {
   cumulative?: import('../store/AppContext').CumulativeStats;
 }
 
-const NAV_ITEMS: { filter: TaskFilter; icon: string; label: string }[] = [
+const NAV_ITEMS: { filter: TaskFilter; icon: string; label: string; cssIcon?: string }[] = [
   { filter: 'all', icon: '📋', label: '全部任务' },
   { filter: 'running', icon: '⚡', label: '运行中' },
   { filter: 'queued', icon: '⏳', label: '排队中' },
   { filter: 'done', icon: '✅', label: '已完成' },
   { filter: 'failed', icon: '❌', label: '失败' },
-  { filter: 'cancelled', icon: '🚫', label: '已取消' },
+  { filter: 'cancelled', icon: '', label: '已取消', cssIcon: 'cancelled' },
 ];
 
 const S = {
@@ -302,7 +302,9 @@ export default function Sidebar({
               className={`sd-nav-item${isActive ? ' active' : ''}`}
               onClick={() => onFilterChange(item.filter)}
             >
-              <span style={S.icon}>{item.icon}</span>
+              <span style={S.icon}>
+                {item.cssIcon ? <span className={`nav-icon-${item.cssIcon}`} /> : item.icon}
+              </span>
               <span style={S.txt}>{item.label}</span>
               <span className={`badge${isActive ? ' active-badge' : ''}`}>{count}</span>
             </div>

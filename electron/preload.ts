@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 const electronAPI = {
+  platform: process.platform,
+
   // Window controls (frameless)
   winMinimize: () => ipcRenderer.send('win-minimize'),
   winMaximize: () => ipcRenderer.send('win-maximize'),
@@ -24,6 +26,7 @@ const electronAPI = {
   testProviderConnection: (type: string, creds: unknown) => ipcRenderer.invoke('test-provider', type, creds),
   setProviderPriority: (providers: string[]) => ipcRenderer.send('set-provider-priority', providers),
   getProviderQuotas: () => ipcRenderer.invoke('get-quotas'),
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   onTasksUpdate: (cb: (tasks: unknown[]) => void) => {
     const handler = (_: unknown, tasks: unknown[]) => cb(tasks);
     ipcRenderer.on('tasks-update', handler);

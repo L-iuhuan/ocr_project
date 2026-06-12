@@ -1,13 +1,19 @@
 import { useState, useEffect } from 'react';
 
 export default function AboutView() {
-  const [appVersion, setAppVersion] = useState('1.0.2');
+  const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
-    fetch('/package.json')
-      .then(r => r.json())
-      .then(pkg => { if (pkg.version) setAppVersion(pkg.version); })
-      .catch(() => { /* use default */ });
+    const api = window.electronAPI;
+    if (api?.getAppVersion) {
+      api.getAppVersion().then(v => setAppVersion(v)).catch(() => {});
+    } else {
+      // Dev fallback — fetch from Vite dev server root
+      fetch('/package.json')
+        .then(r => r.json())
+        .then(pkg => { if (pkg.version) setAppVersion(pkg.version); })
+        .catch(() => {});
+    }
   }, []);
 
   return (
@@ -44,10 +50,6 @@ export default function AboutView() {
           <div className="about-meta-item" style={{ display: 'flex', gap: 6 }}>
             <span className="about-meta-label" style={{ opacity: 0.6 }}>许可证</span>
             <span className="about-meta-value">MIT License</span>
-          </div>
-          <div className="about-meta-item" style={{ display: 'flex', gap: 6 }}>
-            <span className="about-meta-label" style={{ opacity: 0.6 }}>构建日期</span>
-            <span className="about-meta-value">{new Date().toLocaleDateString('zh-CN')}</span>
           </div>
         </div>
       </div>
@@ -90,7 +92,7 @@ export default function AboutView() {
       </div>
 
       <div className="about-footer">
-        <p className="about-copyright">&copy; 2026 OCRFlow — 让文档处理更高效</p>
+        <p className="about-copyright">&copy; {new Date().getFullYear()} OCRFlow — 让文档处理更高效</p>
       </div>
     </div>
   );

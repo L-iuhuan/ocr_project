@@ -9,17 +9,19 @@ function createWindow() {
   // Remove default File/Edit menu - useless for our productivity tool
   Menu.setApplicationMenu(null);
 
+  const isMac = process.platform === 'darwin';
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     minWidth: 1000,
     minHeight: 600,
-    frame: false,           // frameless — custom title bar in renderer
-    titleBarStyle: 'hidden', // macOS: keep traffic lights, hide title
+    frame: isMac,           // Windows: frameless for custom title bar; macOS: native frame needed for traffic lights
+    titleBarStyle: isMac ? 'hidden' : 'default',
     title: 'OCRFlow',
     backgroundColor: '#0F172A',
     show: false,
-    icon: join(__dirname, '../ocr.ico'),
+    icon: join(__dirname, isMac ? '../ocr.png' : '../ocr.ico'),
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -41,6 +43,21 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Clean up stale _ocrflow_tmp dirs left over from previous sessions
+  try {
+    const { readdirSync, rmSync, existsSync } = require('fs');
+    const { join } = require('path');
+    const { loadSettings } = require('./state-manager');
+    const outputDir = loadSettings().outputDir;
+    const tmpParent = join(outputDir, '_ocrflow_tmp');
+    if (existsSync(tmpParent)) {
+      for (const entry of readdirSync(tmpParent)) {
+        try { rmSync(join(tmpParent, entry), { recursive: true, force: true }); } catch {}
+      }
+      try { rmSync(tmpParent, { force: true }); } catch {}
+    }
+  } catch {}
+
   registerIpcHandlers();
   createWindow();
 });

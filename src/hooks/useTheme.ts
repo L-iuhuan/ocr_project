@@ -13,7 +13,7 @@ function getInitialPalette(): PaletteId {
 function getInitialTheme(): ThemeMode {
   const stored = localStorage.getItem(STORAGE_KEY_THEME);
   if (stored === 'dark' || stored === 'light' || stored === 'auto') return stored;
-  return 'dark'; // default: dark + lavender
+  return 'auto'; // default: follow system (light/dark) + lavender
 }
 
 function resolveTheme(mode: ThemeMode): 'dark' | 'light' {

@@ -92,7 +92,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     providers: {
       mineruCloud: { baseUrl: 'https://mineru.net/api/v4', token: '' },
       paddleocrCloud: { token: '' },
-      paddleocrLocal: { enabled: false, port: 51987, pythonPath: 'python' }
+      paddleocrLocal: { enabled: false, port: 51987, pythonPath: process.platform === 'darwin' ? 'python3' : 'python' }
     },
     providerPriority: ['mineru-cloud', 'paddleocr-cloud'],
     outputDir: join(app.getPath('documents'), 'OCRFlow_Output'),
@@ -101,7 +101,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     concurrency: 2,
     maxChunksPerFile: 3,
     chunkSize: 20,
-    theme: 'dark',
+    theme: 'auto',
     autoStart: false,
     autoExtractZip: true,
     deleteChunkTemp: true,
@@ -115,7 +115,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     openaiCompatUrl: 'http://127.0.0.1:8080',
     openaiCompatModel: '',
     localServiceEnabled: false,
-    localServiceType: 'MinerU local service',
+    localServiceType: 'MinerU 本地服务',
     localServiceUrl: 'http://localhost:8000'
   };
 

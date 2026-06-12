@@ -13,6 +13,7 @@ interface Props {
 }
 
 export default function TopBar({ activeView, onViewChange, palette, onPaletteChange, theme, onThemeCycle, logCount }: Props) {
+  const isMac = window.electronAPI?.platform === 'darwin';
   const handleMinimize = () => window.electronAPI?.winMinimize?.();
   const handleMaximize = () => window.electronAPI?.winMaximize?.();
   const handleClose = () => window.electronAPI?.winClose?.();
@@ -42,11 +43,13 @@ export default function TopBar({ activeView, onViewChange, palette, onPaletteCha
       <div className="topbar-right" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <PaletteSelector palette={palette} onChange={onPaletteChange} />
         <ThemeToggle theme={theme} onClick={onThemeCycle} />
-        <div className="win-controls">
-          <button className="win-ctrl-btn" onClick={handleMinimize} title="最小化">─</button>
-          <button className="win-ctrl-btn" onClick={handleMaximize} title="最大化">□</button>
-          <button className="win-ctrl-btn win-close" onClick={handleClose} title="关闭">✕</button>
-        </div>
+        {!isMac && (
+          <div className="win-controls">
+            <button className="win-ctrl-btn" onClick={handleMinimize} title="最小化"><span className="win-icon-min" /></button>
+            <button className="win-ctrl-btn" onClick={handleMaximize} title="最大化"><span className="win-icon-max" /></button>
+            <button className="win-ctrl-btn win-close" onClick={handleClose} title="关闭"><span className="win-icon-close" /></button>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -11,14 +11,14 @@ export class PaddleOCRLocalProvider implements IProvider {
 
   private enabled: boolean = false;
   private port: number = 51987;
-  private pythonPath: string = 'python';
+  private pythonPath: string = process.platform === 'darwin' ? 'python3' : 'python';
   private results = new Map<string, ParsedChunkResult>();
   private readonly MAX_STORED_RESULTS = 20;
 
-  configure(enabled: boolean, port: number, pythonPath = 'python'): void {
+  configure(enabled: boolean, port: number, pythonPath?: string): void {
+    this.pythonPath = pythonPath || (process.platform === 'darwin' ? 'python3' : 'python');
     this.enabled = enabled;
     this.port = port;
-    this.pythonPath = pythonPath || 'python';
     // Clear stale results when settings change
     this.results.clear();
   }

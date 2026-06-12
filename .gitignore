@@ -7,6 +7,12 @@ release/
 .vscode/
 .idea/
 *.log
+*.tmp
+_ocrflow_tmp/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Dev docs & prototypes — not part of the app
+docs/
+docflow-demo-v4.html

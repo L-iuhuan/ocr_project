@@ -2,11 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, readdirSync
 import { basename, dirname, extname, join, relative } from 'path';
 import { Chunk, Task, OutputFormat } from '../types';
 import { getTempDir } from '../state-manager';
-import {
-  Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
-  HeadingLevel, AlignmentType, BorderStyle, ImageRun,
-  WidthType, ShadingType, convertInchesToTwip,
-} from 'docx';
+import AdmZip from 'adm-zip';
 
 // Windows reserved filenames that cannot be used regardless of extension
 const WIN_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
@@ -311,6 +307,16 @@ export async function writeMergedOutputs(
     ensureDir(join(task.outputDir, dirname(baseName)));
   }
 
+  // Adjust image paths for subdirectory output. Images always live at
+  // {outputDir}/images/, but the .md/.html may be at {outputDir}/subdir/file.
+  // In that case we need ../images/ instead of images/.
+  const depth = baseName.includes('/') ? baseName.split('/').length - 1 : 0;
+  const imagePrefix = depth > 0 ? '../'.repeat(depth) + 'images/' : 'images/';
+  if (depth > 0 && mergedMarkdown.includes('](images/')) {
+    mergedMarkdown = mergedMarkdown.replace(/\]\(images\//g, '](' + imagePrefix);
+    mergedMarkdown = mergedMarkdown.replace(/src="images\//g, 'src="' + imagePrefix);
+  }
+
   if (formats.includes('md')) {
     const path = uniquePath(task.outputDir, `${baseName}.md`);
     writeFileSync(path, mergedMarkdown, 'utf-8');
@@ -354,8 +360,12 @@ export async function writeMergedOutputs(
 
   if (formats.includes('docx')) {
     const path = uniquePath(task.outputDir, `${baseName}.docx`);
-    await writeDocx(path, task.originalName, mergedMarkdown, imageOutputDir || join(task.outputDir, 'images'));
-    written.push(path);
+    try {
+      await writeDocx(path, task.originalName, mergedMarkdown, imageOutputDir || join(task.outputDir, 'images'));
+      written.push(path);
+    } catch (docxErr: any) {
+      console.error('[DOCX] 生成失败: ' + (docxErr.message || docxErr));
+    }
   }
 
   return written;
@@ -472,6 +482,7 @@ function findImageFiles(dir: string, maxDepth: number = 10): string[] {
 }
 
 function renderHtml(title: string, markdown: string): string {
+  const body = markdownToHtml(markdown);
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -479,62 +490,224 @@ function renderHtml(title: string, markdown: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)}</title>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; line-height: 1.65; margin: 40px auto; max-width: 920px; padding: 0 24px; color: #111827; }
-    pre { white-space: pre-wrap; word-break: break-word; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+           line-height: 1.75; margin: 40px auto; max-width: 920px; padding: 0 24px; color: #111827; background: #fff; }
+    h1 { font-size: 1.6em; border-bottom: 1px solid #e5e5e5; padding-bottom: 6px; }
+    h2 { font-size: 1.3em; }
+    h3 { font-size: 1.1em; }
+    table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+    th { background: #f5f5f5; }
+    img { max-width: 100%; height: auto; }
+    pre { background: #f5f5f5; padding: 12px 16px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap; }
+    code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 0.9em; }
+    hr { border: none; border-top: 1px solid #e5e5e5; margin: 20px 0; }
+    blockquote { border-left: 3px solid #ccc; margin: 0; padding: 2px 16px; color: #666; }
   </style>
 </head>
 <body>
-  <pre>${escapeHtml(markdown)}</pre>
+${body}
 </body>
 </html>`;
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, ch =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] || ch)
-  );
+/** Simple markdown → HTML converter (handles common OCR output patterns) */
+function markdownToHtml(md: string): string {
+  const lines = md.split(/\r?\n/);
+  const out: string[] = [];
+  let i = 0;
+  let inCode = false;
+  let inTable = false;
+  let inList = false;
+
+  while (i < lines.length) {
+    let line = lines[i];
+
+    // Code block
+    if (line.startsWith('```')) {
+      if (inCode) { out.push('</code></pre>'); inCode = false; i++; continue; }
+      out.push('<pre><code>');
+      inCode = true; i++;
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        out.push(escapeHtml(lines[i])); i++;
+      }
+      continue;
+    }
+    if (inCode) { out.push(escapeHtml(line)); i++; continue; }
+
+    // Empty line
+    if (!line.trim()) {
+      if (inList) { out.push('</ul>'); inList = false; }
+      if (inTable) { out.push('</table>'); inTable = false; }
+      i++; continue;
+    }
+
+    // HTML table
+    if (/<table\b/i.test(line)) {
+      const htmlLines = [line]; i++;
+      while (i < lines.length && !/<\/table>/i.test(lines[i])) { htmlLines.push(lines[i]); i++; }
+      if (i < lines.length) { htmlLines.push(lines[i]); i++; }
+      out.push(htmlLines.join('\n')
+        .replace(/<table[^>]*>/gi, '<table>')
+        .replace(/style='[^']*'/gi, '')
+        .replace(/style="[^"]*"/gi, '')
+      );
+      continue;
+    }
+
+    // Pipe table
+    if (/^\|.+\|/.test(line)) {
+      if (!inTable) { out.push('<table>'); inTable = true; }
+      const cells = line.split('|').slice(1, -1).map(c => c.trim());
+      const tag = inTable && out[out.length - 1] === '<table>' ? 'th' : 'td';
+      out.push('<tr>' + cells.map(c => `<${tag}>${inlineMdToHtml(c)}</${tag}>`).join('') + '</tr>');
+      i++;
+      if (i < lines.length && /^\|[\s\-:]+\|/.test(lines[i])) i++; // skip separator
+      continue;
+    }
+    if (inTable && !/^\|.+\|/.test(line)) { out.push('</table>'); inTable = false; }
+
+    // HR
+    if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { out.push('<hr>'); i++; continue; }
+
+    // Image-only line
+    const imgMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
+    if (imgMatch) { out.push(`<p><img src="${imgMatch[2]}" alt="${imgMatch[1]}"></p>`); i++; continue; }
+
+    // Header
+    const h1 = line.match(/^# (.+)/);
+    if (h1 && !line.startsWith('##')) { out.push(`<h1>${inlineMdToHtml(h1[1])}</h1>`); i++; continue; }
+    const h2 = line.match(/^## (.+)/);
+    if (h2 && !line.startsWith('###')) { out.push(`<h2>${inlineMdToHtml(h2[1])}</h2>`); i++; continue; }
+    const h3 = line.match(/^### (.+)/);
+    if (h3) { out.push(`<h3>${inlineMdToHtml(h3[1])}</h3>`); i++; continue; }
+
+    // List item
+    if (/^[\-\*]\s/.test(line)) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      const text = line.replace(/^[\-\*]\s+/, '');
+      out.push(`<li>${inlineMdToHtml(text)}</li>`);
+      i++; continue;
+    }
+    if (inList && !/^[\-\*]\s/.test(line)) { out.push('</ul>'); inList = false; }
+
+    // Regular paragraph
+    const imgInline = line.match(/!\[([^\]]*)\]\(([^)]+)\)/g);
+    let html = inlineMdToHtml(line);
+    if (imgInline) {
+      for (const m of imgInline) {
+        const parsed = m.match(/!\[([^\]]*)\]\(([^)]+)\)/);
+        if (parsed) html = html.replace(m, `<img src="${parsed[2]}" alt="${parsed[1]}">`);
+      }
+    }
+    out.push(`<p>${html}</p>`);
+    i++;
+  }
+
+  if (inCode) out.push('</code></pre>');
+  if (inTable) out.push('</table>');
+  if (inList) out.push('</ul>');
+  return out.join('\n');
 }
 
-// ---- DOCX generation using the `docx` library ----
+function inlineMdToHtml(text: string): string {
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/__([^_]+)__/g, '<b>$1</b>')
+    .replace(/\*(.+?)\*/g, '<i>$1</i>')
+    .replace(/_([^_]+)_/g, '<i>$1</i>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+function escapeHtml(value: string): string { return escapeXml(value); }
+
+// ---- DOCX generation using adm-zip (direct OOXML) ----
 
 /**
- * Parse markdown into structured blocks, then build a proper .docx with:
- * - Heading styles (H1-H3)
- * - Tables with borders (| col | col | format)
- * - Embedded images (![alt](path))
- * - Inline bold / italic
- * - Bullet lists (- or * items)
- * - Code blocks (``` ```) in monospace
- * - Horizontal rules (---)
+ * Build a proper .docx file from markdown blocks.
+ * Uses adm-zip to construct the OOXML package directly — no external docx library.
+ * Supports: headings, tables, images, bold/italic, lists, code blocks, HR.
  */
-async function writeDocx(
+function writeDocx(
   path: string,
   title: string,
   markdown: string,
   imageDir: string,
-): Promise<void> {
+): void {
   console.log('[DOCX] 开始转换: ' + basename(path) + ' (' + (markdown.length / 1024).toFixed(1) + ' KB markdown)');
   const blocks = parseMarkdownBlocks(markdown);
   console.log('[DOCX] 解析完成: ' + blocks.length + ' 个块 (' +
     blocks.filter(b => b.kind === 'table').length + ' 表格, ' +
     blocks.filter(b => b.kind === 'image').length + ' 图片)');
 
-  const children = await buildDocxChildren(blocks, title, imageDir);
+  const zip = new AdmZip();
+  const imageParts: { name: string; buffer: Buffer; rid: string }[] = [];
 
-  const doc = new Document({
-    styles: {
-      default: {
-        document: {
-          run: { font: 'Calibri', size: 22 }, // 11pt
-        },
-      },
-    },
-    sections: [{ children }],
-  });
+  // Build document body XML
+  let bodyXml = `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t xml:space="preserve">${escapeXml(title)}</w:t></w:r></w:p>`;
+  for (const block of blocks) {
+    bodyXml += blockToDocxXml(block, imageDir, imageParts);
+  }
+  bodyXml += '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>';
 
-  const buffer = await Packer.toBuffer(doc);
-  writeFileSync(path, buffer);
-  console.log('[DOCX] 转换完成: ' + basename(path) + ' (' + (buffer.length / 1024).toFixed(1) + ' KB)');
+  // Package-level relationships (only the document reference)
+  const pkgRels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+    + '</Relationships>';
+
+  // Word-level relationships (image references MUST be here for OOXML compliance)
+  let docRels = '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
+  for (const img of imageParts) {
+    docRels += `<Relationship Id="${img.rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${img.name}"/>`;
+  }
+  docRels += '</Relationships>';
+
+  // Content types
+  let ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    + '<Default Extension="xml" ContentType="application/xml"/>';
+  for (const img of imageParts) {
+    const ext = (img.name.split('.').pop() || 'png').toLowerCase();
+    ct += `<Default Extension="${ext}" ContentType="${ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png'}"/>`;
+  }
+  ct += '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+    + '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>'
+    + '</Types>';
+
+  // Styles (headings + list)
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:pPr><w:spacing w:before="240" w:after="120"/></w:pPr><w:rPr><w:b/><w:sz w:val="32"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:pPr><w:spacing w:before="200" w:after="100"/></w:pPr><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:pPr><w:spacing w:before="160" w:after="80"/></w:pPr><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:pPr><w:ind w:left="720"/></w:pPr></w:style>
+</w:styles>`;
+
+  // Assemble
+  zip.addFile('[Content_Types].xml', Buffer.from(ct, 'utf-8'));
+  zip.addFile('_rels/.rels', Buffer.from(pkgRels, 'utf-8'));
+  zip.addFile('word/_rels/document.xml.rels', Buffer.from(docRels, 'utf-8'));
+  zip.addFile('word/document.xml', Buffer.from(
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+            xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+            xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+            xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+<w:body>${bodyXml}</w:body>
+</w:document>`, 'utf-8'));
+  zip.addFile('word/styles.xml', Buffer.from(stylesXml, 'utf-8'));
+  for (const img of imageParts) {
+    zip.addFile(`word/media/${img.name}`, img.buffer);
+  }
+
+  zip.writeZip(path);
+  console.log('[DOCX] 转换完成: ' + basename(path));
+  // Cleanup — release buffer references to help GC
+  for (const img of imageParts) {
+    (img as any).buffer = undefined;
+  }
 }
 
 // ---- Markdown block parser ----
@@ -572,9 +745,23 @@ function parseMarkdownBlocks(md: string): MdBlock[] {
     // HR
     if (/^(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { blocks.push({ kind: 'hr' }); i++; continue; }
 
-    // Image ![alt](path)
-    const imgMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)\s*$/);
-    if (imgMatch) { blocks.push({ kind: 'image', alt: imgMatch[1], src: imgMatch[2] }); i++; continue; }
+    // Image ![alt](path) — standalone or inline
+    const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    const imgMatches = [...line.matchAll(imgRegex)];
+    if (imgMatches.length > 0) {
+      // Extract all images from this line
+      for (const m of imgMatches) {
+        blocks.push({ kind: 'image', alt: m[1], src: m[2] });
+      }
+      // If there's non-image text on the line, emit it as a paragraph
+      const remaining = line.replace(imgRegex, '').trim();
+      if (remaining) {
+        // Remove the image syntax but keep alt text for context
+        const cleaned = line.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1').trim();
+        if (cleaned) blocks.push({ kind: 'para', text: stripFormatMarkers(cleaned) });
+      }
+      i++; continue;
+    }
 
     // Code block ```
     if (line.startsWith('```')) {
@@ -688,179 +875,144 @@ function parseHtmlTable(html: string): { headers: string[]; rows: string[][] } |
   return { headers: allRows[0], rows: allRows.slice(1) };
 }
 
-// ---- Build DOCX children from blocks ----
+// ---- OOXML block converter ----
 
-async function buildDocxChildren(
-  blocks: MdBlock[],
-  title: string,
+/** Convert a single markdown block to OOXML body XML */
+function blockToDocxXml(
+  block: MdBlock,
   imageDir: string,
-): Promise<(Paragraph | Table)[]> {
-  const children: (Paragraph | Table)[] = [];
-
-  // Title paragraph
-  children.push(new Paragraph({
-    text: title,
-    heading: HeadingLevel.HEADING_1,
-    spacing: { after: 200 },
-  }));
-
-  for (const block of blocks) {
-    switch (block.kind) {
-      case 'h1':
-        children.push(new Paragraph({
-          heading: HeadingLevel.HEADING_1,
-          spacing: { before: 240, after: 120 },
-          children: parseInline(block.text),
-        }));
-        break;
-      case 'h2':
-        children.push(new Paragraph({
-          heading: HeadingLevel.HEADING_2,
-          spacing: { before: 200, after: 100 },
-          children: parseInline(block.text),
-        }));
-        break;
-      case 'h3':
-        children.push(new Paragraph({
-          heading: HeadingLevel.HEADING_3,
-          spacing: { before: 160, after: 80 },
-          children: parseInline(block.text),
-        }));
-        break;
-      case 'para':
-        if (block.text) {
-          children.push(new Paragraph({
-            spacing: { after: 80 },
-            children: parseInline(block.text),
-          }));
-        }
-        break;
-      case 'code':
-        for (const codeLine of block.lines) {
-          children.push(new Paragraph({
-            spacing: { after: 0, line: 240 },
-            shading: { type: ShadingType.SOLID, color: 'F0F0F0', fill: 'F0F0F0' },
-            children: [new TextRun({ text: codeLine || ' ', font: 'Consolas', size: 18 })],
-          }));
-        }
-        break;
-      case 'image':
-        children.push(await buildImageParagraph(block.src, block.alt, imageDir));
-        break;
-      case 'hr':
-        children.push(new Paragraph({
-          spacing: { before: 120, after: 120 },
-          border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: 'CCCCCC', space: 1 } },
-          children: [],
-        }));
-        break;
-      case 'list':
-        for (const item of block.items) {
-          children.push(new Paragraph({
-            spacing: { after: 40 },
-            bullet: { level: 0 },
-            children: parseInline(item),
-          }));
-        }
-        break;
-      case 'table':
-        children.push(buildTable(block.headers, block.rows));
-        break;
+  imageParts: { name: string; buffer: Buffer; rid: string }[],
+): string {
+  switch (block.kind) {
+    case 'h1': return `<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>${inlineToDocxRuns(block.text)}</w:p>`;
+    case 'h2': return `<w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr>${inlineToDocxRuns(block.text)}</w:p>`;
+    case 'h3': return `<w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr>${inlineToDocxRuns(block.text)}</w:p>`;
+    case 'para': {
+      if (!block.text) return '';
+      return `<w:p>${inlineToDocxRuns(block.text)}</w:p>`;
     }
-  }
+    case 'code': {
+      let xml = '';
+      for (const line of block.lines) {
+        xml += `<w:p><w:pPr><w:shd w:val="clear" w:fill="F0F0F0"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">${escapeXml(line || ' ')}</w:t></w:r></w:p>`;
+      }
+      return xml;
+    }
+    case 'image': {
+      const img = loadDocxImage(block.src, imageDir);
+      if (!img) {
+        return `<w:p><w:r><w:rPr><w:i/><w:color w:val="999999"/></w:rPr><w:t>[图片: ${escapeXml(block.alt || basename(block.src))}]</w:t></w:r></w:p>`;
+      }
+      // Constrain to ~5in wide, maintain aspect ratio
+      const EMU_PER_INCH = 914400;
+      const maxW = Math.round(5.0 * EMU_PER_INCH);
+      const wPx = detectImageWidth(img.buffer);
+      const hPx = detectImageHeight(img.buffer, wPx);
+      const ratio = hPx / Math.max(1, wPx);
+      const imgW = maxW;
+      const imgH = Math.round(maxW * ratio);
+      // Generate unique image ID
+      const imgIdx = imageParts.length + 1;
+      const ext = (img.name || 'img.png').split('.').pop() || 'png';
+      const mediaName = `image${imgIdx}.${ext}`;
+      const rid = `rIdImg${imgIdx}`;
+      imageParts.push({ name: mediaName, buffer: img.buffer, rid });
 
-  return children;
+      // DrawingML inline image
+      const extEmu = ext === 'jpg' || ext === 'jpeg' ? 'jpeg' : 'png';
+      return `<w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">
+<wp:extent cx="${imgW}" cy="${imgH}"/>
+<wp:docPr id="${imgIdx}" name="Picture ${imgIdx}" descr="${escapeXml(block.alt)}"/>
+<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+<pic:pic>
+<pic:nvPicPr><pic:cNvPr id="0" name="Picture ${imgIdx}"/><pic:cNvPicPr/></pic:nvPicPr>
+<pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${imgW}" cy="${imgH}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+</pic:pic>
+</a:graphicData>
+</a:graphic>
+</wp:inline></w:drawing></w:r></w:p>`;
+    }
+    case 'hr': {
+      return `<w:p><w:pPr><w:pBdr><w:bottom w:val="single" w:sz="4" w:space="1" w:color="CCCCCC"/></w:pBdr></w:pPr></w:p>`;
+    }
+    case 'list': {
+      let xml = '';
+      for (const item of block.items) {
+        xml += `<w:p><w:pPr><w:pStyle w:val="ListParagraph"/></w:pPr>${inlineToDocxRuns(item)}</w:p>`;
+      }
+      return xml;
+    }
+    case 'table': {
+      return buildDocxTable(block.headers, block.rows);
+    }
+    default: return '';
+  }
 }
 
-// ---- Inline formatting parser ----
-
-function parseInline(text: string): TextRun[] {
-  if (!text) return [];
-
-  // Strip HTML tags but keep <br> as line breaks
+/** Convert inline markdown text to OOXML <w:r> runs (bold, italic, code) */
+function inlineToDocxRuns(text: string): string {
+  // Strip HTML tags, keep <br> as line breaks
   const cleaned = text.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
-  if (!cleaned) return [];
+  if (!cleaned) return `<w:r><w:t xml:space="preserve"></w:t></w:r>`;
 
-  const runs: TextRun[] = [];
+  let xml = '';
   const segments = cleaned.split('\n');
   for (let si = 0; si < segments.length; si++) {
-    if (si > 0) runs.push(new TextRun({ break: 1 }));
-    parseInlineSegment(segments[si], runs);
+    if (si > 0) xml += '<w:r><w:br/></w:r>';
+    xml += formatTextRuns(segments[si]);
   }
-
-  return runs;
+  return xml || `<w:r><w:t xml:space="preserve"></w:t></w:r>`;
 }
 
-function parseInlineSegment(text: string, runs: TextRun[]): void {
-  if (!text) return;
+/** Parse a text segment for bold, italic, code markers → OOXML runs */
+function formatTextRuns(text: string): string {
+  if (!text) return '';
+  let xml = '';
   const re = /(\*\*(.+?)\*\*)|(__([^_]+)__)|(\*(.+?)\*)|(_([^_]+)_)|(`([^`]+)`)|([^*_`]+)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     if (m[1]) {
-      runs.push(new TextRun({ text: m[2], bold: true }));
+      xml += `<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(m[2])}</w:t></w:r>`;
     } else if (m[3]) {
-      runs.push(new TextRun({ text: m[4], bold: true }));
+      xml += `<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(m[4])}</w:t></w:r>`;
     } else if (m[5]) {
-      runs.push(new TextRun({ text: m[6], italics: true }));
+      xml += `<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">${escapeXml(m[6])}</w:t></w:r>`;
     } else if (m[7]) {
-      runs.push(new TextRun({ text: m[8], italics: true }));
+      xml += `<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve">${escapeXml(m[8])}</w:t></w:r>`;
     } else if (m[9]) {
-      runs.push(new TextRun({ text: m[10], font: 'Consolas', size: 18 }));
+      xml += `<w:r><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas"/><w:sz w:val="18"/></w:rPr><w:t xml:space="preserve">${escapeXml(m[10])}</w:t></w:r>`;
     } else if (m[11]) {
-      runs.push(new TextRun({ text: m[11] }));
+      xml += `<w:r><w:t xml:space="preserve">${escapeXml(m[11])}</w:t></w:r>`;
     }
   }
-
-  // Fallback: if no runs were added, use plain text
-  if (runs.length === 0) runs.push(new TextRun({ text }));
+  return xml || `<w:r><w:t xml:space="preserve">${escapeXml(text)}</w:t></w:r>`;
 }
 
-// ---- Table builder ----
-
-function buildTable(headers: string[], rows: string[][]): Table {
-  const border = { style: BorderStyle.SINGLE, size: 1, color: '999999' };
-  const cellBorders = { top: border, bottom: border, left: border, right: border };
-
-  const headerCells = headers.map(h =>
-    new TableCell({
-      children: [new Paragraph({
-        children: parseInline(h),
-        alignment: AlignmentType.CENTER,
-      })],
-      shading: { type: ShadingType.SOLID, color: 'E8E8E8', fill: 'E8E8E8' },
-      borders: cellBorders,
-      width: { size: Math.max(1500, Math.floor(9000 / Math.max(1, headers.length))), type: WidthType.DXA },
-    })
-  );
-
-  const dataRows = rows.map(row =>
-    new TableRow({
-      children: row.map(cell =>
-        new TableCell({
-          children: [new Paragraph({ children: parseInline(cell) })],
-          borders: cellBorders,
-        })
-      ),
-    })
-  );
-
-  return new Table({
-    rows: [
-      new TableRow({ children: headerCells, tableHeader: true }),
-      ...dataRows,
-    ],
-    width: { size: 100, type: WidthType.PERCENTAGE },
-  });
+/** Build OOXML table from headers and rows */
+function buildDocxTable(headers: string[], rows: string[][]): string {
+  let xml = '<w:tbl><w:tblPr><w:tblW w:w="5000" w:type="pct"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="999999"/><w:left w:val="single" w:sz="4" w:color="999999"/><w:bottom w:val="single" w:sz="4" w:color="999999"/><w:right w:val="single" w:sz="4" w:color="999999"/><w:insideH w:val="single" w:sz="4" w:color="999999"/><w:insideV w:val="single" w:sz="4" w:color="999999"/></w:tblBorders></w:tblPr>';
+  // Header row
+  xml += '<w:tr>';
+  for (const h of headers) {
+    xml += `<w:tc><w:tcPr><w:shd w:val="clear" w:fill="E8E8E8"/></w:tcPr><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">${escapeXml(h)}</w:t></w:r></w:p></w:tc>`;
+  }
+  xml += '</w:tr>';
+  // Data rows
+  for (const row of rows) {
+    xml += '<w:tr>';
+    for (const cell of row) {
+      xml += `<w:tc><w:p>${inlineToDocxRuns(cell)}</w:p></w:tc>`;
+    }
+    xml += '</w:tr>';
+  }
+  xml += '</w:tbl>';
+  return xml;
 }
 
-// ---- Image paragraph ----
-
-async function buildImageParagraph(
-  src: string,
-  alt: string,
-  imageDir: string,
-): Promise<Paragraph> {
-  // Resolve image path: try absolute, then relative to imageDir
+/** Load an image file for DOCX embedding. Returns {name, buffer} or null. */
+function loadDocxImage(src: string, imageDir: string): { name: string; buffer: Buffer } | null {
   let imgPath: string;
   if (existsSync(src)) {
     imgPath = src;
@@ -869,44 +1021,54 @@ async function buildImageParagraph(
     if (existsSync(candidate)) {
       imgPath = candidate;
     } else {
-      // Image not found — show placeholder text
-      return new Paragraph({
-        spacing: { after: 100 },
-        children: [new TextRun({ text: `[图片: ${alt || basename(src)}]`, italics: true, color: '999999' })],
-      });
+      return null;
     }
   }
-
   try {
-    const imgBuffer = readFileSync(imgPath);
-    // Determine image type from extension
-    const ext = extname(imgPath).toLowerCase();
-    const typeMap: Record<string, 'png' | 'jpg' | 'gif' | 'bmp'> = {
-      '.png': 'png', '.jpg': 'jpg', '.jpeg': 'jpg', '.gif': 'gif', '.bmp': 'bmp',
-      '.webp': 'png', '.tif': 'png', '.tiff': 'png', '.svg': 'png',
-    };
-    const imgType = typeMap[ext] || 'png';
-
-    // Constrain image size: max 5.5in wide, max 4in tall
-    const maxW = convertInchesToTwip(5.5);
-    const maxH = convertInchesToTwip(4);
-
-    return new Paragraph({
-      spacing: { before: 120, after: 120 },
-      alignment: AlignmentType.CENTER,
-      children: [
-        new ImageRun({
-          data: imgBuffer,
-          transformation: { width: maxW, height: maxH },
-          type: imgType,
-          altText: { title: alt, description: alt, name: basename(imgPath) },
-        }),
-      ],
-    });
+    const buf = readFileSync(imgPath);
+    return { name: basename(imgPath), buffer: buf };
   } catch {
-    return new Paragraph({
-      spacing: { after: 100 },
-      children: [new TextRun({ text: `[图片读取失败: ${alt || basename(src)}]`, italics: true, color: 'CC0000' })],
-    });
+    return null;
   }
+}
+
+/** Quick image width detection (pixels) for aspect ratio calculation */
+function detectImageWidth(buf: Buffer): number {
+  try {
+    if (buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50) return buf.readUInt32BE(16);
+    if (buf.length >= 4 && buf[0] === 0xFF && buf[1] === 0xD8) {
+      let i = 2; const maxI = buf.length - 9;
+      while (i < maxI) {
+        if (buf[i] !== 0xFF) { i++; continue; }
+        if (buf[i + 1] === 0xC0 || buf[i + 1] === 0xC2) return buf.readUInt16BE(i + 7);
+        if (i + 4 >= buf.length) break;
+        i += 2 + buf.readUInt16BE(i + 2);
+      }
+    }
+  } catch {}
+  return 800; // fallback
+}
+
+function detectImageHeight(buf: Buffer, width: number): number {
+  try {
+    if (width > 0 && buf.length >= 24 && buf[0] === 0x89 && buf[1] === 0x50) return buf.readUInt32BE(20);
+    if (width > 0 && buf.length >= 4 && buf[0] === 0xFF && buf[1] === 0xD8) {
+      let i = 2; const maxI = buf.length - 9;
+      while (i < maxI) {
+        if (buf[i] !== 0xFF) { i++; continue; }
+        if (buf[i + 1] === 0xC0 || buf[i + 1] === 0xC2) return buf.readUInt16BE(i + 5);
+        if (i + 4 >= buf.length) break;
+        i += 2 + buf.readUInt16BE(i + 2);
+      }
+    }
+  } catch {}
+  return Math.round(width * 0.75);
+}
+
+
+function escapeXml(value: string): string {
+  const safe = value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
+  return safe.replace(/[&<>"']/g, ch =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch] || ch)
+  );
 }

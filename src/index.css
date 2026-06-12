@@ -211,18 +211,25 @@ body {
 .topbar-left { display: flex; align-items: center; gap: 16px; }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
 
-/* 窗口控制按钮（frameless） */
+/* 窗口控制按钮（frameless — CSS 绘制图标，无字体偏差） */
 .win-controls { display: flex; align-items: center; gap: 2px; margin-left: 6px; }
 .win-ctrl-btn {
   width: 36px; height: 28px;
   border: none; background: transparent;
-  color: var(--text-tertiary); font-size: 13px;
+  color: var(--text-tertiary);
   cursor: pointer; border-radius: 4px;
   transition: all 0.15s;
   display: flex; align-items: center; justify-content: center;
 }
 .win-ctrl-btn:hover { background: var(--glass-2); color: var(--text-secondary); }
 .win-ctrl-btn.win-close:hover { background: #c42b1c; color: #fff; }
+/* icons drawn with CSS — zero font baseline issues */
+.win-icon-min { width: 10px; height: 1.5px; background: currentColor; border-radius: 0; }
+.win-icon-max { width: 10px; height: 10px; border: 1.5px solid currentColor; border-radius: 1px; box-sizing: border-box; }
+.win-icon-close { position: relative; width: 12px; height: 12px; }
+.win-icon-close::before, .win-icon-close::after { content: ""; position: absolute; top: 50%; left: 50%; width: 13px; height: 1.5px; background: currentColor; border-radius: 0; }
+.win-icon-close::before { transform: translate(-50%, -50%) rotate(45deg); }
+.win-icon-close::after  { transform: translate(-50%, -50%) rotate(-45deg); }
 
 .logo {
   display: flex;
@@ -375,6 +382,19 @@ body {
 }
 .sd-nav-item .badge.active-badge { background: var(--accent-soft); color: var(--accent-text); }
 
+/* nav icons drawn with CSS (no emoji platform variance) */
+.nav-icon-cancelled {
+  display: inline-block; width: 13px; height: 13px; vertical-align: middle;
+  border: 2px solid #e74c3c; border-radius: 50%; position: relative; opacity: 1;
+}
+.nav-icon-cancelled::after {
+  content: ""; position: absolute; top: 50%; left: 50%;
+  width: 9px; height: 2px; background: #e74c3c;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border-radius: 0;
+}
+.sd-nav-item .badge.active-badge { background: var(--accent-soft); color: var(--accent-text); }
+
 .sd-spacer { flex: 1; }
 .sd-footer { padding-top: 6px; border-top: 1px solid var(--border-subtle); }
 
@@ -482,7 +502,7 @@ body {
   transition: transform 0.2s;
 }
 .task-card:hover .file-icon { transform: scale(1.05); }
-.task-card .file-icon.pdf { background: rgba(201,122,138,0.12); color: var(--red); }
+.task-card .file-icon.pdf { background: rgba(201,122,138,0.12); color: #c0392b; }
 .task-card .file-icon.doc { background: var(--bg-sidebar); color: var(--accent); }
 .task-card .file-icon.img { background: var(--amber-bg); color: var(--amber); }
 
@@ -539,7 +559,7 @@ body {
 .task-card .prog-bar .fill { height: 100%; border-radius: 4px; transition: width 0.5s; }
 .task-card .prog-bar .fill.running { background: var(--accent); }
 .task-card .prog-bar .fill.done { background: var(--green); }
-.task-card .prog-bar .fill.failed { background: var(--red); }
+.task-card .prog-bar .fill.failed { background: #c0392b; }
 .task-card .prog-text { font-size: 11px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; min-width: 32px; text-align: right; }
 
 /* =====================================================================
@@ -561,7 +581,7 @@ body {
 .cp.done { background: var(--green-bg); color: var(--green); border-color: rgba(107,184,154,0.15); }
 .cp.proc { background: var(--accent-soft); color: var(--accent-text); border-color: var(--accent-border); }
 .cp.queued { background: var(--glass-2); color: var(--text-tertiary); border-color: var(--border-glass); }
-.cp.fail { background: var(--red-bg); color: var(--red); border-color: rgba(201,122,138,0.15); }
+.cp.fail { background: var(--red-bg); color: #c0392b; border-color: rgba(201,122,138,0.15); }
 .cp.extract { background: var(--amber-bg); color: var(--amber); border-color: rgba(201,168,107,0.15); }
 .cp .pdot { width: 4px; height: 4px; border-radius: 50%; }
 .cp.proc .pdot { background: var(--accent); }
@@ -665,7 +685,7 @@ body {
 .prio-item .pname { flex: 1; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
 .prio-item .pstatus { font-size: 10px; padding: 1px 8px; border-radius: 10px; flex-shrink: 0; }
 .prio-item .pstatus.on { background: var(--green-bg); color: var(--green); }
-.prio-item .pstatus.off { background: var(--red-bg); color: var(--red); }
+.prio-item .pstatus.off { background: var(--red-bg); color: #c0392b; }
 .prio-item .pstatus.local { background: var(--amber-bg); color: var(--amber); }
 .prio-item .arrow { color: var(--text-tertiary); font-size: 10px; cursor: pointer; padding: 2px; transition: transform 0.2s; flex-shrink: 0; }
 .prio-item .arrow.open { transform: rotate(180deg); }
@@ -681,7 +701,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance
 
 .test-btn:hover { background: var(--glass-2); color: var(--text-primary); }
 .test-btn.success { border-color: var(--green); color: var(--green); background: var(--green-bg); }
-.test-btn.fail { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+.test-btn.fail { border-color: #c0392b; color: #c0392b; background: var(--red-bg); }
 
 .section-indent { padding-left: 16px; border-left: 2px solid var(--accent-border); margin-bottom: 6px; }
 
@@ -713,7 +733,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance
 .statusbar-left .sdot { width: 4px; height: 4px; border-radius: 50%; }
 .statusbar-left .sdot.g { background: var(--green); }
 .statusbar-left .sdot.a { background: var(--accent); }
-.statusbar-left .sdot.r { background: var(--red); }
+.statusbar-left .sdot.r { background: #c0392b; }
 .statusbar-left .num { font-weight: 600; color: var(--text-secondary); }
 .statusbar-right { display: flex; align-items: center; gap: 10px; }
 .statusbar-right .pstat { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
@@ -734,7 +754,7 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance
    ChunkPill 分块状态圆�?   ===================================================================== */
 .cp { display: inline-flex; align-items: center; gap: 2px; font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--glass-2); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
 .cp.done { color: var(--green); background: var(--green-bg); }
-.cp.fail { color: var(--red); background: var(--red-bg); }
+.cp.fail { color: #c0392b; background: var(--red-bg); }
 .cp.extract { color: var(--accent-text); background: var(--accent-soft); }
 .cp.proc { color: var(--accent-text); background: var(--accent-soft); }
 .cp.queued { color: var(--text-tertiary); background: var(--glass-1); }
@@ -780,10 +800,10 @@ input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance
 .log-msg{color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;}
 .log-jid{color:var(--text-tertiary);font-size:9px;flex-shrink:0;opacity:0.5;}
 .log-warn .log-level{color:var(--amber);background:var(--amber-bg);opacity:1;}
-.log-error .log-level{color:var(--red);background:var(--red-bg);opacity:1;}
+.log-error .log-level{color:#c0392b;background:var(--red-bg);opacity:1;}
 .log-success .log-level{color:var(--green);background:var(--green-bg);opacity:1;}
 .log-warn .log-msg{color:var(--amber);}
-.log-error .log-msg{color:var(--red);}
+.log-error .log-msg{color:#c0392b;}
 .log-success .log-msg{color:var(--green);}
 .stats-row{display:flex;gap:12px;flex-shrink:0;margin-bottom:10px;flex-wrap:wrap;}
 .stats-item{font-size:11px;padding:3px 10px;border-radius:8px;background:var(--glass-1);border:1px solid var(--border-glass);color:var(--text-tertiary);}

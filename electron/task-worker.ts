@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, readFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import AdmZip from 'adm-zip';
+import axios from 'axios';
 import { Chunk, GlobalProgress, Task, ProviderType } from './types';
 import { IProvider, ParsedChunkResult } from './providers/i-provider';
 import { getProvider } from './providers/provider-registry';
@@ -19,6 +20,23 @@ type ProgressCallback = (progress: GlobalProgress & { chunkTotal: number; chunkC
 const RUNNING_STATES = ['preprocessing', 'uploading', 'running', 'downloading', 'merging'];
 const RETRYABLE_CHUNK_STATES = ['pending', 'failed'];
 const MAX_CONSECUTIVE_FAILS_BEFORE_FALLBACK = 2;
+
+/** Detect image format from magic bytes. Returns extension with dot, or empty string. */
+function detectImageFormat(buf: Buffer): string {
+  if (buf.length < 4) return '';
+  // PNG: 89 50 4E 47
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return '.png';
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return '.jpg';
+  // GIF: 47 49 46
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46) return '.gif';
+  // WebP: 52 49 46 46 ... 57 45 42 50
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return '.webp';
+  // BMP: 42 4D
+  if (buf[0] === 0x42 && buf[1] === 0x4D) return '.bmp';
+  return '';
+}
 
 /** Auto-degrade tiers: when a chunk fails due to size, try the next smaller tier */
 function degradeChunkSize(current: number): number {
@@ -391,6 +409,10 @@ class TaskWorker {
       const failedPages = failedChunks.reduce((sum, chunk) => sum + this.chunkPageCount(task, chunk), 0);
       incrementFailedCount(task.providerUsed || 'mineru-cloud', Math.max(1, failedPages));
       this.emitQuotaUpdate();
+      // Clean up temp files even when all chunks failed (no merge happened)
+      if (doneChunks.length === 0) {
+        try { cleanupTempFiles(task); } catch {}
+      }
       this.log('任务部分失败: ' + task.originalName + ' (' + failedChunks.length + '/' + task.chunks.length + ' 分块)', 'warn', task.jobId);
       return;
     }
@@ -480,7 +502,9 @@ class TaskWorker {
       task.progress = this.computeTaskProgress(task);
       task.elapsed = task.startedAt ? Date.now() - task.startedAt : 0;
       this.emitUpdate();
-      await sleep(2000);
+      // Progressive backoff: 1s → 2s → 3s to balance speed vs API load
+      const delay = pollCount < 20 ? 1000 : pollCount < 60 ? 2000 : 3000;
+      await sleep(delay);
     }
     if (pollCount >= maxPolls) {
       throw Object.assign(
@@ -541,23 +565,51 @@ class TaskWorker {
         try {
           let buffer: Buffer;
           if (typeof data === 'string') {
-            if (data.startsWith('data:')) {
-              const b64 = data.split(',')[1] || data;
-              buffer = Buffer.from(b64, 'base64');
+            const clean = data.trim();
+            // PaddleOCR may return image URLs instead of base64 data
+            if (clean.startsWith('http://') || clean.startsWith('https://')) {
+              this.log('下载远程图片: ' + String(name), 'info', task.jobId);
+              try {
+                const resp = await axios.get(clean, { responseType: 'arraybuffer', timeout: 30000 });
+                buffer = Buffer.from(resp.data);
+              } catch (dlErr: any) {
+                this.log('远程图片下载失败: ' + String(name) + ' — ' + (dlErr.message || dlErr), 'warn', task.jobId);
+                continue; // skip this image
+              }
+            } else if (clean.startsWith('data:')) {
+              const b64 = clean.split(',')[1] || clean;
+              buffer = Buffer.from(b64.replace(/\s/g, ''), 'base64');
             } else {
-              buffer = Buffer.from(data, 'base64');
+              buffer = Buffer.from(clean.replace(/\s/g, ''), 'base64');
             }
+          } else if (Buffer.isBuffer(data)) {
+            buffer = data;
+          } else if (typeof data === 'object' && data !== null && 'buffer' in (data as any) && ArrayBuffer.isView(data)) {
+            buffer = Buffer.from(data);
           } else {
-            buffer = Buffer.from(data as any);
+            // Unknown format — try JSON serialization then base64
+            const str = typeof data === 'object' ? JSON.stringify(data) : String(data);
+            buffer = Buffer.from(str.replace(/\s/g, ''), 'base64');
           }
-          // Preserve path separators; only strip truly dangerous characters
-          const safeName = String(name).replace(/[<>:"|?*]/g, '_');
-          // Prevent path traversal via ../
-          const cleanName = safeName.replace(/\.\./g, '_').replace(/^[/\\]+/, '');
-          const imgPath = join(chunkDir, cleanName);
+
+          // Auto-detect real image format from magic bytes, correct extension
+          const detectedExt = detectImageFormat(buffer);
+          const originalName = String(name).replace(/[<>:"|?*]/g, '_').replace(/\.\./g, '_').replace(/^[/\\]+/, '');
+          const imgPath = detectedExt
+            ? join(chunkDir, originalName.replace(/\.[^.]+$/, '') + detectedExt)
+            : join(chunkDir, originalName);
           ensureDir(dirname(imgPath));
           writeFileSync(imgPath, buffer);
-        } catch (e: any) { this.log('图片保存失败: ' + (e.message || e), 'warn', task.jobId); }
+
+          // If we corrected the extension, the markdown references the old name.
+          // Store a mapping note for later collection.
+          if (detectedExt && imgPath !== join(chunkDir, originalName)) {
+            const oldPath = join(chunkDir, originalName);
+            try { writeFileSync(oldPath, buffer); } catch {} // save under original name too as fallback
+          }
+        } catch (e: any) {
+          this.log('图片保存失败: ' + (name || '?') + ' — ' + (e.message || e), 'warn', task.jobId);
+        }
       }
     }
 
@@ -682,10 +734,18 @@ class TaskWorker {
 
     const settings = loadSettings();
 
-    // Image output dir: use custom path if explicitly set, otherwise follow outputDir
-    const imageOutputDir = (settings.imageOutputDir && settings.imageOutputDir.trim())
-      ? settings.imageOutputDir
-      : join(task.outputDir, 'images');
+    // Image output dir: default follows outputDir/images/.
+    // If user set it to the same as outputDir, auto-append /images.
+    const customDir = settings.imageOutputDir?.trim();
+    let imageOutputDir: string;
+    if (!customDir) {
+      imageOutputDir = join(task.outputDir, 'images');
+    } else if (customDir === task.outputDir || customDir === task.outputDir.replace(/[/\\]$/, '')) {
+      imageOutputDir = join(task.outputDir, 'images');
+    } else {
+      imageOutputDir = customDir;
+    }
+    ensureDir(imageOutputDir);
 
     // Only collect + rewrite images if keepImages is enabled
     let finalMarkdown: string;
