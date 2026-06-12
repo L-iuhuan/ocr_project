@@ -25,6 +25,16 @@ export interface HeadlessSummary {
 }
 
 export async function runHeadlessParse(options: HeadlessParseOptions): Promise<{ code: number; summary: HeadlessSummary }> {
+  const originalConsoleLog = console.log;
+  if (options.json) console.log = () => {};
+  try {
+    return await runHeadlessParseInner(options);
+  } finally {
+    console.log = originalConsoleLog;
+  }
+}
+
+async function runHeadlessParseInner(options: HeadlessParseOptions): Promise<{ code: number; summary: HeadlessSummary }> {
   const settings = applyOverrides(loadSettings(), options);
   const log = (message: string) => {
     if (!options.json) console.log(message);
