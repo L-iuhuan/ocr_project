@@ -20,7 +20,7 @@ export default function TopBar({ activeView, onViewChange, palette, onPaletteCha
 
   return (
     <div className="topbar" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}>
-      <div className="topbar-left" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <div className="topbar-left" style={{ WebkitAppRegion: 'no-drag', paddingLeft: isMac ? 80 : 20 } as React.CSSProperties}>
         <div className="logo">
           <div className="logo-icon">
             <svg viewBox="0 0 24 24">
