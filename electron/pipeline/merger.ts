@@ -307,6 +307,10 @@ export async function writeMergedOutputs(
     ensureDir(join(task.outputDir, dirname(baseName)));
   }
 
+  // Remove NUL/control bytes returned by OCR providers. A single \x00 can make
+  // editors treat an otherwise valid Markdown file as binary.
+  mergedMarkdown = sanitizeTextContent(mergedMarkdown);
+
   // Adjust image paths for subdirectory output. Images always live at
   // {outputDir}/images/, but the .md/.html may be at {outputDir}/subdir/file.
   // In that case we need ../images/ instead of images/.
@@ -409,6 +413,10 @@ export function cleanupTempFiles(task: Task): void {
 }
 
 // ---- Helpers ----
+
+function sanitizeTextContent(value: string): string {
+  return value.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
+}
 
 function chunkLabel(task: Task, chunk: Chunk): string {
   if (chunk.pageStart && chunk.pageEnd) {

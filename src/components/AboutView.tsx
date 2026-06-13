@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 
 export default function AboutView() {
   const [appVersion, setAppVersion] = useState('');
-  const [mcpCopied, setMcpCopied] = useState(false);
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -16,14 +15,6 @@ export default function AboutView() {
         .catch(() => {});
     }
   }, []);
-
-  const copyMcpConfig = async () => {
-    const config = await window.electronAPI?.getMcpConfig?.();
-    if (!config) return;
-    await navigator.clipboard.writeText(config);
-    setMcpCopied(true);
-    setTimeout(() => setMcpCopied(false), 1800);
-  };
 
   return (
     <div className="about-view">
@@ -61,14 +52,6 @@ export default function AboutView() {
             <span className="about-meta-value">MIT License</span>
           </div>
         </div>
-      </div>
-
-      <div className="about-section">
-        <div className="sec-title">Agent / MCP</div>
-        <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.7, marginBottom: 10 }}>
-          支持通过标准 MCP 工具 parse_documents 调用 OCRFlow。首次使用请先在软件内配置 OCR 服务商，然后复制下面的配置到 Claude Code 或其他 MCP 客户端。
-        </p>
-        <button className="test-btn" onClick={copyMcpConfig}>{mcpCopied ? '已复制 MCP 配置' : '复制 MCP 配置'}</button>
       </div>
 
       <div className="about-section">

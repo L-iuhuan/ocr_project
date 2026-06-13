@@ -3,13 +3,14 @@ import ProviderSettings from './ProviderSettings';
 import GeneralSettings from './GeneralSettings';
 import LocalInferenceSettings from './LocalInferenceSettings';
 import AboutView from './AboutView';
+import AgentMcpSettings from './AgentMcpSettings';
 import type { Settings } from '../types';
 
 interface Props {
   onClose: () => void;
 }
 
-type SettingsTab = 'providers' | 'basic' | 'local' | 'about';
+type SettingsTab = 'providers' | 'basic' | 'local' | 'agent' | 'about';
 
 const DEFAULT_SETTINGS: Settings = {
   providers: {
@@ -207,6 +208,7 @@ export default function SettingsView({ onClose }: Props) {
     { key: 'providers', label: '服务商' },
     { key: 'basic', label: '基本设置' },
     { key: 'local', label: '本地推理' },
+    { key: 'agent', label: 'Agent / MCP' },
     { key: 'about', label: '关于' },
   ];
 
@@ -265,6 +267,10 @@ export default function SettingsView({ onClose }: Props) {
             testConnection={testConnection}
             testResults={testResults}
           />
+        </div>
+
+        <div className={`settings-panel${tab === 'agent' ? ' active' : ''}`}>
+          <AgentMcpSettings />
         </div>
 
         <div className={`settings-panel${tab === 'about' ? ' active' : ''}`}>
