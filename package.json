@@ -77,6 +77,7 @@
       "target": ["zip"],
       "icon": "ocr.png",
       "category": "public.app-category.productivity",
+      "identity": null,
       "gatekeeperAssess": false
     }
   }

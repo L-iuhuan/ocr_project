@@ -40,6 +40,16 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      - name: Ad-hoc codesign (prevent "damaged" error)
+        run: |
+          APP="$(ls -d release/mac*/OCRFlow.app 2>/dev/null || ls -d release/*.app 2>/dev/null || echo '')"
+          if [ -n "$APP" ] && [ -d "$APP" ]; then
+            codesign --force --deep --sign - "$APP"
+            echo "ad-hoc signed: $APP"
+          else
+            echo "No .app bundle found for signing (may be in zip already)"
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
