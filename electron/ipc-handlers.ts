@@ -25,6 +25,7 @@ export function registerIpcHandlers(): void {
 
   // Init providers
   mineruCloud = new MinerUCloudProvider(settings.providers.mineruCloud.token);
+  mineruCloud.setModeLogCallback((msg, level) => taskWorker.log('[MinerU] ' + msg, level));
   paddleocrCloud = new PaddleOCRCloudProvider(settings.providers.paddleocrCloud.token);
   paddleocrLocal = new PaddleOCRLocalProvider();
   paddleocrLocal.configure(

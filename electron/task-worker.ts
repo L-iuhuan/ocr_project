@@ -184,10 +184,15 @@ class TaskWorker {
 
     // Reset ALL chunks to pending for cancelled tasks (no partial progress to save).
     // For failed tasks, only reset the failed chunks.
-    const hasMissingDoneResults = task.chunks.some(c => c.chunkState === 'done' && (!c.resultUrl || !existsSync(c.resultUrl)));
     const hasPartialFailure = task.state === 'failed' &&
       task.chunks.some(c => c.chunkState === 'done') &&
       task.chunks.some(c => c.chunkState === 'failed');
+    if (hasPartialFailure) {
+      // Clean up stale _ocrflow_tmp from previous partial run before retry.
+      // After reset, new chunks will be created; old temp files are orphaned otherwise.
+      try { cleanupTempFiles(task); } catch {}
+    }
+    const hasMissingDoneResults = task.chunks.some(c => c.chunkState === 'done' && (!c.resultUrl || !existsSync(c.resultUrl)));
     const targets = task.state === 'cancelled' || hasMissingDoneResults || hasPartialFailure
       ? task.chunks
       : (task.chunks.filter(c => c.chunkState === 'failed').length > 0

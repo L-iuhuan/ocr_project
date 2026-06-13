@@ -7,6 +7,8 @@ import { promisify } from 'util';
 import { PROVIDER_LIMITS, ProviderType, ProviderLimits } from '../types';
 import { IProvider, ParsedChunkResult, ProviderHealth } from './i-provider';
 
+export type MinerUModeLogCallback = (message: string, level: 'info' | 'warn' | 'error') => void;
+
 const streamPipeline = promisify(pipeline);
 
 const AGENT_BASE = 'https://mineru.net/api/v1';
@@ -71,6 +73,11 @@ export class MinerUCloudProvider implements IProvider {
   // Precision batch IDs can look like UUIDs too; never guess by shape.
   private agentTaskIds = new Set<string>();
   private precisionTaskIds = new Set<string>();
+  private onModeLog?: MinerUModeLogCallback;
+
+  setModeLogCallback(cb: MinerUModeLogCallback): void {
+    this.onModeLog = cb;
+  }
 
   constructor(token: string) {
     this.token = token;
@@ -123,6 +130,7 @@ export class MinerUCloudProvider implements IProvider {
 
     if (this.token && !this.useAgentOnly && !this.precisionQuotaExhausted && fileSize <= 200 * 1024 * 1024) {
       console.log('[MinerU] -> Precision mode');
+      this.onModeLog?.('Precision 模式（Token 有效，≤200MB）', 'info');
       return this.submitPrecision(chunkPath, fileName, fileSize, onProgress, signal);
     }
 
@@ -130,6 +138,7 @@ export class MinerUCloudProvider implements IProvider {
       throw new Error('File too large (' + (fileSize/1024/1024).toFixed(1) + 'MB). Agent mode max 10MB. Please check if MinerU Token is valid.');
     }
     console.log('[MinerU] -> Agent mode');
+    this.onModeLog?.('Agent 模式（免登录，≤10MB/20页）', 'info');
     var taskId = await this.submitAgent(chunkPath, fileName, onProgress, signal);
     this.agentTaskIds.add(taskId);
     return taskId;
