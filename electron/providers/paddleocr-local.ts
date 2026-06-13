@@ -116,35 +116,41 @@ export class PaddleOCRLocalProvider implements IProvider {
   }
 
   private normalizeLocalResult(raw: any): ParsedChunkResult {
-    const root = raw?.result || raw;
-    const layoutResults = root?.layoutParsingResults || [];
+    const root = raw?.result || raw?.data || raw;
     const chunks: string[] = [];
     const images: Record<string, string> = {};
 
+    // 1) Direct markdown/text style responses used by many lightweight services.
+    pushText(chunks, root?.markdown || root?.md || root?.text || raw?.markdown || raw?.md || raw?.text);
+    pushText(chunks, raw?.choices?.[0]?.message?.content || raw?.choices?.[0]?.text);
+
+    // 2) MinerU / PaddleOCR / AIStudio layoutParsingResults.
+    const layoutResults = root?.layoutParsingResults || raw?.layoutParsingResults || [];
     for (const item of layoutResults) {
       const beforeCount = chunks.length;
       const markdown = item?.markdown;
-      if (typeof markdown === 'string') {
-        chunks.push(markdown);
-      } else if (typeof markdown?.text === 'string') {
-        chunks.push(markdown.text);
-      }
-      if (markdown?.images && typeof markdown.images === 'object') {
-        Object.assign(images, markdown.images);
-      }
+      pushText(chunks, typeof markdown === 'string' ? markdown : markdown?.text);
+      if (markdown?.images && typeof markdown.images === 'object') Object.assign(images, markdown.images);
 
-      // External PaddleOCR/MinerU-compatible local services may return only
-      // prunedResult.parsing_res_list, not markdown.text.
-      const parsingList = item?.prunedResult?.parsing_res_list;
+      const parsingList = item?.prunedResult?.parsing_res_list || item?.parsing_res_list || item?.blocks;
       if (chunks.length === beforeCount && Array.isArray(parsingList)) {
-        const lines = parsingList
-          .map((block: any) => normalizeBlockContent(block))
-          .filter(Boolean);
+        const lines = parsingList.map((block: any) => normalizeBlockContent(block)).filter(Boolean);
         if (lines.length > 0) chunks.push(lines.join('\n\n'));
       }
-      if (item?.outputImages && typeof item.outputImages === 'object') {
-        Object.assign(images, item.outputImages);
-      }
+      if (item?.outputImages && typeof item.outputImages === 'object') Object.assign(images, item.outputImages);
+    }
+
+    // 3) Traditional OCR arrays: results, ocr_result, rec_texts, blocks, pages.
+    for (const list of [root?.results, root?.ocr_result, root?.rec_texts, root?.blocks, root?.pages]) {
+      if (!Array.isArray(list)) continue;
+      const lines = list.map((item: any) => normalizeBlockContent(item)).filter(Boolean);
+      if (lines.length > 0) chunks.push(lines.join('\n\n'));
+    }
+
+    // 4) Last-resort recursive scan for common text fields.
+    if (chunks.length === 0) {
+      const found = collectTextFields(root, 0);
+      if (found.length > 0) chunks.push(found.join('\n\n'));
     }
 
     return {
@@ -155,11 +161,38 @@ export class PaddleOCRLocalProvider implements IProvider {
   }
 }
 
+function pushText(chunks: string[], value: unknown): void {
+  if (typeof value === 'string' && value.trim()) chunks.push(value.trim());
+}
+
 function normalizeBlockContent(block: any): string {
-  const content = String(block?.block_content || '').trim();
+  if (typeof block === 'string') return block.trim();
+  const content = String(
+    block?.block_content ?? block?.text ?? block?.content ?? block?.markdown ??
+    block?.rec_text ?? block?.recText ?? block?.transcription ?? block?.value ?? ''
+  ).trim();
   if (!content) return '';
-  const label = String(block?.block_label || '').toLowerCase();
+  const label = String(block?.block_label || block?.type || block?.label || '').toLowerCase();
   if (label.includes('title')) return '## ' + content;
-  if (label === 'formula') return '$$\n' + content + '\n$$';
+  if (label === 'formula' || label.includes('equation')) return '$$\n' + content + '\n$$';
   return content;
+}
+
+function collectTextFields(value: any, depth: number): string[] {
+  if (depth > 5 || value == null) return [];
+  if (typeof value === 'string') return value.trim().length > 20 ? [value.trim()] : [];
+  if (Array.isArray(value)) return value.flatMap(item => collectTextFields(item, depth + 1));
+  if (typeof value !== 'object') return [];
+
+  const hits: string[] = [];
+  for (const key of Object.keys(value)) {
+    const lower = key.toLowerCase();
+    if (['markdown', 'md', 'text', 'content', 'block_content', 'rec_text', 'transcription'].includes(lower)) {
+      const text = value[key];
+      if (typeof text === 'string' && text.trim()) hits.push(text.trim());
+    } else if (!['image', 'images', 'outputimages', 'inputimage', 'bbox', 'block_bbox'].includes(lower)) {
+      hits.push(...collectTextFields(value[key], depth + 1));
+    }
+  }
+  return Array.from(new Set(hits));
 }
