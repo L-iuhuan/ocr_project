@@ -4,6 +4,7 @@ import { basename, join, extname } from 'path';
 import { randomUUID } from 'crypto';
 import { FileInfo, Chunk, ProviderType, PROVIDER_LIMITS } from '../types';
 import { getTempDir } from '../state-manager';
+import { resolveChunksDir } from './task-workspace';
 
 export interface SplitResult {
   chunks: Chunk[];
@@ -13,7 +14,9 @@ export interface SplitResult {
 export async function splitFileByProvider(
   file: FileInfo,
   provider: ProviderType,
-  maxPagesOverride?: number
+  maxPagesOverride?: number,
+  jobId?: string,
+  outputDir?: string,
 ): Promise<SplitResult> {
   const limits = PROVIDER_LIMITS[provider];
   const maxPages = Math.max(1, maxPagesOverride || limits.maxPages);
@@ -30,21 +33,21 @@ export async function splitFileByProvider(
   }
 
   if (file.type === 'pdf') {
-    return splitPDF(file, maxPages);
+    return splitPDF(file, maxPages, jobId, outputDir);
   }
 
   chunks.push(createChunk(file.path, 0, 1, Math.max(1, file.pageCount)));
   return { chunks, totalChunks: 1 };
 }
 
-async function splitPDF(file: FileInfo, maxPagesPerChunk: number): Promise<SplitResult> {
+async function splitPDF(file: FileInfo, maxPagesPerChunk: number, jobId?: string, outputDir?: string): Promise<SplitResult> {
   const buffer = readFileSync(file.path);
   const srcDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
   const totalPages = srcDoc.getPageCount();
   const totalChunks = Math.ceil(totalPages / maxPagesPerChunk);
   const chunks: Chunk[] = [];
   const jobUUID = randomUUID();
-  const tempDir = getTempDir();
+  const outDir = (jobId && outputDir) ? resolveChunksDir(jobId, outputDir) : getTempDir();
 
   for (let seq = 0; seq < totalChunks; seq++) {
     const start = seq * maxPagesPerChunk;
@@ -60,7 +63,7 @@ async function splitPDF(file: FileInfo, maxPagesPerChunk: number): Promise<Split
     const pageStart = start + 1;
     const pageEnd = end;
     const chunkName = `${basename(file.path, extname(file.path))}_p${pageStart}-${pageEnd}_${jobUUID.slice(0, 8)}.pdf`;
-    const chunkPath = join(tempDir, chunkName);
+    const chunkPath = join(outDir, chunkName);
     writeFileSync(chunkPath, await chunkDoc.save());
 
     chunks.push({

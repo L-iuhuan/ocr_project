@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, readdirSync
 import { basename, dirname, extname, join, relative } from 'path';
 import { Chunk, Task, OutputFormat } from '../types';
 import { getTempDir } from '../state-manager';
+import { resolveChunkResultDir } from './task-workspace';
 import AdmZip from 'adm-zip';
 
 // Windows reserved filenames that cannot be used regardless of extension
@@ -71,7 +72,7 @@ export function collectImages(
     const mdDir = dirname(chunk.resultUrl);
 
     // Also scan chunkDir for images that may live outside mdDir
-    const chunkDir = join(task.outputDir, '_ocrflow_tmp', task.jobId, 'chunk_' + (chunk.chunkSequence + 1));
+    const chunkDir = resolveChunkResultDir(task.jobId, task.outputDir, chunk.chunkSequence);
 
     // Collect images from both mdDir and chunkDir (union)
     const imageFiles = new Set<string>();

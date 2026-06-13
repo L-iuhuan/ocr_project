@@ -84,19 +84,15 @@ app.whenReady().then(async () => {
     return;
   }
 
-  // Clean up stale _ocrflow_tmp dirs left over from previous sessions
+  // Clean up stale _ocrflow_tmp dirs — only workspaces for tasks that are
+  // gone (done, cancelled, removed) are deleted. Active/partial tasks keep
+  // their workspace so that retry can reuse finished chunks.
   try {
-    const { readdirSync, rmSync, existsSync } = require('fs');
-    const { join } = require('path');
-    const { loadSettings } = require('./state-manager');
+    const { loadSettings, loadTasks } = require('./state-manager');
     const outputDir = loadSettings().outputDir;
-    const tmpParent = join(outputDir, '_ocrflow_tmp');
-    if (existsSync(tmpParent)) {
-      for (const entry of readdirSync(tmpParent)) {
-        try { rmSync(join(tmpParent, entry), { recursive: true, force: true }); } catch {}
-      }
-      try { rmSync(tmpParent, { force: true }); } catch {}
-    }
+    const tasks = loadTasks();
+    const activeJobIds = new Set(tasks.map((t: any) => t.jobId).filter(Boolean));
+    require('./pipeline/task-workspace').cleanupStaleWorkspaces(outputDir, activeJobIds);
   } catch {}
 
   registerIpcHandlers();

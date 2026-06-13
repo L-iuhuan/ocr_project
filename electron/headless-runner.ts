@@ -10,7 +10,7 @@ import { registerProvider } from './providers/provider-registry';
 import { MinerUCloudProvider } from './providers/mineru-cloud';
 import { PaddleOCRCloudProvider } from './providers/paddleocr-cloud';
 import { PaddleOCRLocalProvider } from './providers/paddleocr-local';
-import { loadSettings } from './state-manager';
+import { loadSettings, generateJobId } from './state-manager';
 import { taskWorker } from './task-worker';
 import { pythonBridge } from './python-bridge';
 
@@ -87,8 +87,9 @@ async function runHeadlessParseInner(options: HeadlessParseOptions): Promise<{ c
     const providerChunkSize = route.provider.getChunkSize();
     const effectiveChunkSize = Math.min(settings.chunkSize || providerChunkSize, providerChunkSize);
     log('路由: ' + file.name + ' → ' + route.provider.type + ' (' + file.pageCount + '页)');
-    const split = await splitFileByProvider(file, route.provider.type, effectiveChunkSize);
-    const task = buildTaskFromFile(file, split.chunks, route.provider, settings.outputDir, settings.outputFormats);
+    const jid = generateJobId();
+    const split = await splitFileByProvider(file, route.provider.type, effectiveChunkSize, jid, settings.outputDir);
+    const task = buildTaskFromFile(file, split.chunks, route.provider, settings.outputDir, settings.outputFormats, jid);
     tasks.push(task);
   }
 

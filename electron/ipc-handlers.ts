@@ -10,7 +10,7 @@ import { PaddleOCRCloudProvider } from './providers/paddleocr-cloud';
 import { PaddleOCRLocalProvider } from './providers/paddleocr-local';
 import { taskWorker } from './task-worker';
 import { getProviderQuotas } from './page-counter';
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, loadTasks } from './state-manager';
+import { DEFAULT_SETTINGS, loadSettings, saveSettings, loadTasks, generateJobId } from './state-manager';
 import { AppSettings, ProviderStatus, Task, ProviderType } from './types';
 import { join } from 'path';
 import { ProviderHealth } from './providers/i-provider';
@@ -138,10 +138,11 @@ export function registerIpcHandlers(): void {
         const userChunkSize = currentSettings.chunkSize || 10;
         const providerChunkSize = route.provider.getChunkSize();
         const effectiveChunkSize = Math.min(userChunkSize, providerChunkSize);
-        const split = await splitFileByProvider(file, route.provider.type, effectiveChunkSize);
+        const jid = generateJobId();
+        const split = await splitFileByProvider(file, route.provider.type, effectiveChunkSize, jid, currentSettings.outputDir);
         taskWorker.log('拆分: ' + file.name + ' → ' + split.totalChunks + ' chunk(s) (' + effectiveChunkSize + '页/块)', 'info');
 
-        const task = buildTaskFromFile(file, split.chunks, route.provider, currentSettings.outputDir, currentSettings.outputFormats);
+        const task = buildTaskFromFile(file, split.chunks, route.provider, currentSettings.outputDir, currentSettings.outputFormats, jid);
         tasks.push(task);
       }
 

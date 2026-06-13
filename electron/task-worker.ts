@@ -12,6 +12,7 @@ import { mergeChunks, writeMergedOutputs, cleanupTempFiles, collectImages, rewri
 import { validateTask } from './pipeline/validator';
 import { getProviderQuotas } from './page-counter';
 import { BrowserWindow } from 'electron';
+import { writeManifest, readManifest, syncManifestToTask, resolveChunksDir, resolveChunkResultDir, deleteWorkspace, cleanupStaleWorkspaces } from './pipeline/task-workspace';
 
 type TaskCallback = (tasks: Task[]) => void;
 type LogLevel = 'info' | 'warn' | 'error' | 'success';
@@ -74,6 +75,10 @@ class TaskWorker {
 
   restoreTasks(tasks: Task[]): void {
     const restored = tasks.map(task => {
+      // Recover chunk state from workspace manifest (survives app restarts).
+      if (task.outputDir) {
+        try { syncManifestToTask(task, task.outputDir); } catch {}
+      }
       const next = { ...task, elapsed: task.elapsed || 0 };
       if (RUNNING_STATES.includes(next.state)) {
         next.state = 'pending';
@@ -182,6 +187,9 @@ class TaskWorker {
       return;
     }
 
+    // Recover chunk state from workspace manifest (survives app restarts).
+    syncManifestToTask(task, task.outputDir);
+
     const hasMissingChunkFiles = task.chunks.some(c => c.chunkPath && !existsSync(c.chunkPath));
     if (hasMissingChunkFiles) {
       this.log('重试检测到部分临时分块缺失，将按页段重建对应分块', 'warn', jobId);
@@ -228,6 +236,7 @@ class TaskWorker {
     if (idx === -1) return;
     const [removed] = this.queue.splice(idx, 1);
     try { cleanupTempFiles(removed); } catch {}
+    try { deleteWorkspace(removed.jobId, removed.outputDir); } catch {}
     this.log('任务已移除: ' + jobId, 'info');
     this.emitUpdate();
     this.emitProgress();
@@ -624,7 +633,7 @@ class TaskWorker {
   }
 
   private async materializeChunkResult(task: Task, chunk: Chunk, result: ParsedChunkResult): Promise<void> {
-    const chunkDir = join(task.outputDir, '_ocrflow_tmp', task.jobId, 'chunk_' + (chunk.chunkSequence + 1));
+    const chunkDir = resolveChunkResultDir(task.jobId, task.outputDir, chunk.chunkSequence);
     ensureDir(chunkDir);
 
     if (result.markdown) {
@@ -846,13 +855,14 @@ class TaskWorker {
       imageOutputDir
     );
 
-    // Only cleanup complete tasks immediately. Partial outputs keep temp data so
-    // retry can reuse already-finished chunks without losing pages.
+    // Persist chunk states to manifest for recovery across restarts.
+    writeManifest(task.jobId, task.outputDir, task, partial ? written : []);
     if (!partial) {
       cleanupPartialOutputs(task);
+      deleteWorkspace(task.jobId, task.outputDir);
     }
     if (!partial && settings.deleteChunkTemp !== false) {
-      cleanupTempFiles(task);
+      try { cleanupTempFiles(task); } catch {}
     }
     this.log('输出文件: ' + written.map(p => basename(p)).join(', '), 'success', task.jobId);
   }
@@ -897,8 +907,9 @@ class TaskWorker {
     const pages = await subDoc.copyPages(srcDoc, srcDoc.getPageIndices().slice(start, end));
     for (const page of pages) subDoc.addPage(page);
 
+    const chunksDir = resolveChunksDir(task.jobId, task.outputDir);
     const rebuiltPath = join(
-      getTempDir(),
+      chunksDir,
       basename(sourcePath, '.pdf') + '_retry_p' + chunk.pageStart + '-' + chunk.pageEnd + '_' + task.jobId.slice(-6) + '.pdf'
     );
     writeFileSync(rebuiltPath, await subDoc.save());

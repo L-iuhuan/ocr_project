@@ -56,11 +56,12 @@ export function buildTaskFromFile(
   chunks: Chunk[],
   provider: IProvider,
   outputDir: string,
-  outputFormats: OutputFormat[]
+  outputFormats: OutputFormat[],
+  jobId?: string,
 ): Task {
   const now = Date.now();
   return {
-    jobId: generateJobId(),
+    jobId: jobId || generateJobId(),
     originalName: file.name,
     sourcePaths: [file.path],
     fileType: file.type,
