@@ -31,6 +31,14 @@ export default defineConfig({
             }
           }
         }
+      },
+      {
+        entry: 'electron/mcp-server.ts',
+        vite: {
+          build: {
+            outDir: 'dist-electron'
+          }
+        }
       }
     ])
   ],

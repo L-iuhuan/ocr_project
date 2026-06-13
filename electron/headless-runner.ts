@@ -74,7 +74,7 @@ async function runHeadlessParseInner(options: HeadlessParseOptions): Promise<{ c
     return { code: 2, summary: emptySummary(['文件页数分析失败']) };
   }
 
-  const providerStatuses = await getProviderStatuses(providers, log);
+  const providerStatuses = await getProviderStatuses(providers, settings.providerPriority, log);
   const tasks: Task[] = [];
   const skipped: string[] = [...missing.map(p => '路径不存在: ' + p)];
 
@@ -105,7 +105,7 @@ async function runHeadlessParseInner(options: HeadlessParseOptions): Promise<{ c
   const failed = resultTasks.filter(t => t.state === 'failed').length;
   const cancelled = resultTasks.filter(t => t.state === 'cancelled').length;
   const summary: HeadlessSummary = {
-    ok: failed === 0 && cancelled === 0,
+    ok: failed === 0 && cancelled === 0 && skipped.length === 0,
     total: resultTasks.length,
     completed,
     failed,
@@ -172,11 +172,19 @@ function bootstrapProviders(settings: AppSettings) {
 
 async function getProviderStatuses(
   providers: ReturnType<typeof bootstrapProviders>,
+  priority: ProviderType[],
   log: (message: string) => void,
 ): Promise<ProviderStatus[]> {
+  const providerMap = new Map<ProviderType, any>([
+    ['mineru-cloud', providers.mineruCloud],
+    ['paddleocr-cloud', providers.paddleocrCloud],
+    ['paddleocr-local', providers.paddleocrLocal],
+  ]);
   const statuses: ProviderStatus[] = [];
-  for (const provider of [providers.mineruCloud, providers.paddleocrCloud, providers.paddleocrLocal]) {
-    const health = await provider.healthCheck().catch(err => ({ available: false, message: err.message || '检测失败' }));
+  for (const type of priority) {
+    const provider = providerMap.get(type);
+    if (!provider) continue;
+    const health = await provider.healthCheck().catch((err: any) => ({ available: false, message: err.message || '检测失败' }));
     log('Provider: ' + provider.type + ' — ' + health.message);
     statuses.push({
       type: provider.type as ProviderType,

@@ -71,8 +71,15 @@ app.whenReady().then(async () => {
         tasks: [],
       },
     }));
-    await stopHeadlessServices().catch(() => {});
-    if (headless.options.json) console.log(JSON.stringify(summary, null, 2));
+    if (headless.options.json) {
+      const originalConsoleLog = console.log;
+      console.log = () => {};
+      await stopHeadlessServices().catch(() => {});
+      console.log = originalConsoleLog;
+      process.stdout.write(JSON.stringify(summary, null, 2) + '\n');
+    } else {
+      await stopHeadlessServices().catch(() => {});
+    }
     app.exit(code);
     return;
   }

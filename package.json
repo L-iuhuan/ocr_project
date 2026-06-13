@@ -53,6 +53,10 @@
       "ocr.png",
       "package.json"
     ],
+    "asarUnpack": [
+      "python/**",
+      "dist-electron/mcp-server.js"
+    ],
     "win": {
       "target": "portable",
       "icon": "ocr.ico",

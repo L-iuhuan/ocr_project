@@ -3,7 +3,7 @@ import { createServer } from 'net';
 import { join } from 'path';
 import { app } from 'electron';
 import axios from 'axios';
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 
 export interface PythonEnv {
   pythonInstalled: boolean;
@@ -65,7 +65,7 @@ export class PythonBridge {
       ? await findAvailablePort(preferredPort, Math.max(preferredPort, 52987))
       : await findAvailablePort(51987, 52987);
 
-    const serverScript = join(app.getAppPath(), 'python', 'local_ocr_server.py');
+    const serverScript = resolvePythonServerScript();
 
     this.process = spawn(pythonPath, [
       serverScript,
@@ -212,6 +212,19 @@ export class PythonBridge {
     }
     throw new Error('本地 OCR 服务启动超时');
   }
+}
+
+function resolvePythonServerScript(): string {
+  const appPath = app.getAppPath();
+  const normal = join(appPath, 'python', 'local_ocr_server.py');
+  if (existsSync(normal)) return normal;
+
+  // When packaged in app.asar, electron-builder places asarUnpack files next
+  // to it under app.asar.unpacked. External Python cannot execute ASAR paths.
+  const unpacked = normal.replace('app.asar', 'app.asar.unpacked');
+  if (existsSync(unpacked)) return unpacked;
+
+  return normal;
 }
 
 function findAvailablePort(start: number, end: number): Promise<number> {

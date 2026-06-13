@@ -1,15 +1,17 @@
 import { spawn } from 'child_process';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
+const MAX_CAPTURE_BYTES = 64 * 1024;
+
 const inputSchema = {
-  paths: z.array(z.string().min(1)).min(1).describe('Local file or folder paths to parse'),
+  paths: z.array(z.string().min(1)).min(1).describe('Absolute local file or folder paths to parse. Use forward slashes or escaped backslashes on Windows.'),
   outputDir: z.string().min(1).optional().describe('Optional output directory for this run'),
   provider: z.enum(['auto', 'mineru-cloud', 'paddleocr-cloud', 'paddleocr-local']).optional().describe('Optional single provider override'),
-  providers: z.array(z.enum(['mineru-cloud', 'paddleocr-cloud', 'paddleocr-local'])).optional().describe('Optional provider fallback order'),
+  providers: z.array(z.enum(['mineru-cloud', 'paddleocr-cloud', 'paddleocr-local'])).optional().describe('Optional provider fallback order. Do not pass provider and providers together.'),
   concurrency: z.number().int().min(1).max(8).optional().describe('Optional concurrency override'),
   chunkSize: z.number().int().min(1).optional().describe('Optional pages-per-chunk override'),
 } as any;
@@ -23,6 +25,8 @@ interface ParseInput {
   chunkSize?: number;
 }
 
+let activeRun = false;
+
 async function main(): Promise<void> {
   const server = new McpServer({ name: 'ocrflow', version: '1.1.2' });
 
@@ -34,19 +38,46 @@ async function main(): Promise<void> {
       inputSchema,
     },
     async (input: any) => {
-      const result = await runOcrflowCli(input as ParseInput);
-      return {
-        isError: result.exitCode !== 0,
-        content: [{ type: 'text' as const, text: result.summaryText }],
-      };
+      const normalized = normalizeInput(input as ParseInput);
+      if ('error' in normalized) return toolError(normalized.error, { ok: false, error: normalized.error });
+      if (activeRun) return toolError('OCRFlow is already processing another MCP request. Wait for it to finish and retry.', { ok: false, error: 'busy' });
+
+      activeRun = true;
+      try {
+        const result = await runOcrflowCli(normalized.value);
+        const structured = safeSummary(result.summaryText) || { ok: result.exitCode === 0, raw: result.summaryText };
+        const isError = result.exitCode !== 0 || (typeof structured === 'object' && structured !== null && (structured as any).ok === false);
+        return {
+          isError,
+          structuredContent: structured as Record<string, unknown>,
+          content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],
+        };
+      } finally {
+        activeRun = false;
+      }
     },
   );
 
   await server.connect(new StdioServerTransport());
 }
 
+function normalizeInput(input: ParseInput): { value: ParseInput } | { error: string } {
+  if (input.provider && input.providers && input.providers.length > 0) {
+    return { error: 'Pass either provider or providers, not both.' };
+  }
+  const paths = (input.paths || []).map(cleanPath).filter(Boolean);
+  if (paths.length === 0) return { error: 'At least one input path is required.' };
+  return {
+    value: {
+      ...input,
+      paths,
+      outputDir: input.outputDir ? cleanPath(input.outputDir) : undefined,
+    },
+  };
+}
+
 function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryText: string }> {
-  const { command, baseArgs } = resolveOcrflowCommand();
+  const { command, baseArgs, cwd } = resolveOcrflowCommand();
   const args = [...baseArgs, ...input.paths];
 
   if (input.outputDir) args.push('--out', input.outputDir);
@@ -59,14 +90,14 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
   if (input.chunkSize) args.push('--chunk-size', String(input.chunkSize));
   args.push('--json');
 
-  return new Promise(resolve => {
+  return new Promise(resolveResult => {
     let child;
     try {
-      child = spawn(command, args, { cwd: process.cwd(), windowsHide: true });
+      child = spawn(command, args, { cwd, windowsHide: true });
     } catch (err: any) {
-      resolve({
+      resolveResult({
         exitCode: 1,
-        summaryText: JSON.stringify({ ok: false, error: err.message || String(err), command, args }, null, 2),
+        summaryText: JSON.stringify({ ok: false, error: err.message || String(err), command, args, cwd }, null, 2),
       });
       return;
     }
@@ -74,22 +105,23 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
     let stdout = '';
     let stderr = '';
 
-    child.stdout.on('data', data => { stdout += data.toString(); });
-    child.stderr.on('data', data => { stderr += data.toString(); });
+    child.stdout.on('data', data => { stdout = appendCapped(stdout, data.toString()); });
+    child.stderr.on('data', data => { stderr = appendCapped(stderr, data.toString()); });
     child.on('error', err => {
-      resolve({
+      resolveResult({
         exitCode: 1,
-        summaryText: JSON.stringify({ ok: false, error: err.message, command, args }, null, 2),
+        summaryText: JSON.stringify({ ok: false, error: err.message, command, args, cwd }, null, 2),
       });
     });
     child.on('close', code => {
       const parsed = extractJson(stdout);
       if (parsed) {
-        resolve({ exitCode: code ?? 1, summaryText: JSON.stringify(parsed, null, 2) });
+        const forcedError = typeof parsed === 'object' && parsed !== null && (parsed as any).ok === false;
+        resolveResult({ exitCode: forcedError ? 1 : (code ?? 1), summaryText: JSON.stringify(parsed, null, 2) });
         return;
       }
-      resolve({
-        exitCode: code ?? 1,
+      resolveResult({
+        exitCode: 1,
         summaryText: JSON.stringify({
           ok: false,
           error: 'OCRFlow CLI did not return valid JSON',
@@ -102,19 +134,52 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
   });
 }
 
-function resolveOcrflowCommand(): { command: string; baseArgs: string[] } {
-  const explicit = process.env.OCRFLOW_COMMAND;
-  if (explicit) {
-    return { command: explicit, baseArgs: ['--headless', 'parse'] };
-  }
+function resolveOcrflowCommand(): { command: string; baseArgs: string[]; cwd: string } {
+  const appRoot = resolve(__dirname, '..');
+  const explicit = stripOuterQuotes(process.env.OCRFLOW_COMMAND || '');
+  if (explicit) return { command: explicit, baseArgs: ['--headless', 'parse'], cwd: dirname(explicit) };
 
-  const electronPackage = join(process.cwd(), 'node_modules', 'electron');
+  const electronPackage = join(appRoot, 'node_modules', 'electron');
   if (existsSync(electronPackage)) {
     const electronBinary = require('electron') as string;
-    return { command: electronBinary, baseArgs: ['.', '--headless', 'parse'] };
+    return { command: electronBinary, baseArgs: [appRoot, '--headless', 'parse'], cwd: appRoot };
   }
 
-  return { command: process.platform === 'win32' ? 'OCRFlow.exe' : 'OCRFlow', baseArgs: ['--headless', 'parse'] };
+  const packaged = resolvePackagedExecutable(appRoot);
+  if (packaged) return { command: packaged, baseArgs: ['--headless', 'parse'], cwd: dirname(packaged) };
+
+  return { command: process.platform === 'win32' ? 'OCRFlow.exe' : 'OCRFlow', baseArgs: ['--headless', 'parse'], cwd: appRoot };
+}
+
+function resolvePackagedExecutable(appRoot: string): string | null {
+  const winExe = resolve(appRoot, '..', '..', 'OCRFlow.exe');
+  if (process.platform === 'win32' && existsSync(winExe)) return winExe;
+
+  const macExe = resolve(appRoot, '..', '..', 'MacOS', 'OCRFlow');
+  if (process.platform === 'darwin' && existsSync(macExe)) return macExe;
+
+  return null;
+}
+
+function cleanPath(value: string): string {
+  return stripOuterQuotes(String(value).trim());
+}
+
+function stripOuterQuotes(value: string): string {
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
+function appendCapped(current: string, next: string): string {
+  const combined = current + next;
+  if (combined.length <= MAX_CAPTURE_BYTES) return combined;
+  return '[truncated]\n' + combined.slice(combined.length - MAX_CAPTURE_BYTES);
+}
+
+function safeSummary(text: string): unknown | null {
+  try { return JSON.parse(text); } catch { return null; }
 }
 
 function extractJson(output: string): unknown | null {
@@ -128,6 +193,14 @@ function extractJson(output: string): unknown | null {
     try { return JSON.parse(text.slice(first, last + 1)); } catch {}
   }
   return null;
+}
+
+function toolError(message: string, structured: Record<string, unknown>) {
+  return {
+    isError: true,
+    structuredContent: structured,
+    content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) || message }],
+  };
 }
 
 main().catch(err => {

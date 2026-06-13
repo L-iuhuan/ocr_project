@@ -4,7 +4,7 @@ import AdmZip from 'adm-zip';
 import axios from 'axios';
 import { AppSettings, Chunk, GlobalProgress, Task, ProviderType } from './types';
 import { IProvider, ParsedChunkResult } from './providers/i-provider';
-import { getProvider } from './providers/provider-registry';
+import { canProviderHandle, getProvider } from './providers/provider-registry';
 import { incrementFailedCount, incrementPageCount } from './page-counter';
 import { loadSettings, saveTasks } from './state-manager';
 import { mergeChunks, writeMergedOutputs, cleanupTempFiles, collectImages, rewriteImagePaths } from './pipeline/merger';
@@ -297,9 +297,9 @@ class TaskWorker {
           task.chunks.filter(c => c.chunkState === 'done').length === 0) {
         const currentIdx = this.providerPriority.indexOf(currentProviderType);
         if (currentIdx >= 0 && currentIdx < this.providerPriority.length - 1) {
-          const nextType = this.providerPriority[currentIdx + 1];
-          const nextProvider = getProvider(nextType);
-          if (nextProvider) {
+          const nextType = this.providerPriority.slice(currentIdx + 1).find(t => canProviderHandle(t, task.fileType));
+          const nextProvider = nextType ? getProvider(nextType) : undefined;
+          if (nextType && nextProvider) {
             const oldChunkSize = provider.getChunkSize();
             const newChunkSize = nextProvider.getChunkSize();
             this.log(
@@ -367,16 +367,22 @@ class TaskWorker {
           );
           try {
             const subChunks = await this.splitOneChunk(chunk, degraded, task);
-            task.chunks.splice(i, 1, ...subChunks);
-            task.totalChunks = task.chunks.length;
-            for (let k = 0; k < task.chunks.length; k++) {
-              task.chunks[k].chunkSequence = k;
+            if (subChunks.length > 1 || subChunks[0]?.chunkPath !== chunk.chunkPath) {
+              for (const subChunk of subChunks) {
+                subChunk.chunkState = 'pending';
+                subChunk.progress = 0;
+              }
+              task.chunks.splice(i, 1, ...subChunks);
+              task.totalChunks = task.chunks.length;
+              for (let k = 0; k < task.chunks.length; k++) {
+                task.chunks[k].chunkSequence = k;
+              }
+              i--;
+              consecutiveFails = 0;
+              task.progress = this.computeTaskProgress(task);
+              this.emitUpdate();
+              continue;
             }
-            i--;
-            consecutiveFails = 0;
-            task.progress = this.computeTaskProgress(task);
-            this.emitUpdate();
-            continue;
           } catch (splitErr: any) {
             this.log('降级拆分失败: ' + (splitErr.message || ''), 'error', task.jobId);
           }
@@ -388,6 +394,29 @@ class TaskWorker {
         chunk.errorMsg = err.message || '未知错误';
         consecutiveFails++;
         this.log('分块 ' + (i + 1) + '/' + task.chunks.length + ' 失败: ' + chunk.errorMsg, 'error', task.jobId);
+
+        if (consecutiveFails >= MAX_CONSECUTIVE_FAILS_BEFORE_FALLBACK &&
+            task.chunks.filter(c => c.chunkState === 'done').length === 0) {
+          const currentIdx = this.providerPriority.indexOf(currentProviderType);
+          const nextType = currentIdx >= 0
+            ? this.providerPriority.slice(currentIdx + 1).find(t => canProviderHandle(t, task.fileType))
+            : undefined;
+          const nextProvider = nextType ? getProvider(nextType) : undefined;
+          if (nextType && nextProvider) {
+            this.log('Provider 切换: ' + currentProviderType + ' → ' + nextType + ' (当前 Provider 连续失败，立即重试)', 'warn', task.jobId);
+            currentProviderType = nextType;
+            provider = nextProvider;
+            task.providerUsed = nextType;
+            consecutiveFails = 0;
+            chunk.chunkState = 'pending';
+            chunk.progress = 0;
+            chunk.taskId = undefined;
+            chunk.errorCode = undefined;
+            chunk.errorMsg = undefined;
+            i--;
+            continue;
+          }
+        }
       }
 
       task.progress = this.computeTaskProgress(task);
@@ -424,6 +453,16 @@ class TaskWorker {
 
     task.completedAt = Date.now();
     task.elapsed = task.startedAt ? task.completedAt - task.startedAt : task.elapsed || 0;
+
+    const unfinishedChunks = task.chunks.filter(c => c.chunkState !== 'done' && c.chunkState !== 'failed');
+    if (unfinishedChunks.length > 0) {
+      task.state = 'failed';
+      task.errorCode = 'CHUNK_INCOMPLETE';
+      task.errorMsg = unfinishedChunks.length + ' 个分块未完成';
+      this.log('任务失败: ' + task.originalName + ' (' + task.errorMsg + ')', 'error', task.jobId);
+      try { cleanupTempFiles(task); } catch {}
+      return;
+    }
 
     if (failedChunks.length > 0) {
       task.state = 'failed';
@@ -498,6 +537,7 @@ class TaskWorker {
 
     let pollCount = 0;
     const maxPolls = 240;
+    const pollStartedAt = Date.now();
     while (pollCount < maxPolls) {
       signal.throwIfAborted();
       if (this.isTaskCancelled(task)) throw Object.assign(new Error('任务已取消'), { code: 'CANCELLED' });
@@ -532,7 +572,7 @@ class TaskWorker {
     }
     if (pollCount >= maxPolls) {
       throw Object.assign(
-        new Error('轮询超时 (' + provider.type + ', task_id: ' + taskId + ', 已等待 ' + (maxPolls * 2) + '秒)'),
+        new Error('轮询超时 (' + provider.type + ', task_id: ' + taskId + ', 已等待 ' + Math.round((Date.now() - pollStartedAt) / 1000) + '秒)'),
         { code: 'POLL_TIMEOUT' }
       );
     }

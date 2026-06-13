@@ -9,6 +9,7 @@ release/
 *.log
 *.tmp
 *.pdf
+.mcp.json
 _ocrflow_tmp/
 .DS_Store
 Thumbs.db
