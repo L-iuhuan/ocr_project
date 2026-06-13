@@ -166,7 +166,11 @@ export class PythonBridge {
     const resp = await axios.post(`http://127.0.0.1:${this.port}/layout-parsing`, {
       file: base64,
       fileType: isPdf ? 0 : 1,
-      file_name: filePath.split(/[/\\]/).pop() || 'document'
+      file_name: filePath.split(/[/\\]/).pop() || 'document',
+      useDocOrientationClassify: false,
+      useDocUnwarping: false,
+      useTextlineOrientation: false,
+      useTableRecognition: true,
     }, {
       headers: { 'Content-Type': 'application/json' },
       timeout: 600000,

@@ -182,18 +182,29 @@ class TaskWorker {
       return;
     }
 
+    // If previous retry/degrade temp chunks were cleaned or moved, fall back to
+    // the original source file and let normal auto-degrade split it again.
+    const hasMissingChunkFiles = task.chunks.some(c => c.chunkPath && !existsSync(c.chunkPath));
+    if (hasMissingChunkFiles && task.sourcePaths?.[0] && existsSync(task.sourcePaths[0])) {
+      this.log('重试检测到临时分块缺失，回退为原始文件重新处理', 'warn', jobId);
+      task.chunks = [{
+        chunkSequence: 0,
+        chunkPath: task.sourcePaths[0],
+        pageStart: 1,
+        pageEnd: Math.max(1, task.pageCount || 1),
+        chunkState: 'pending',
+        progress: 0,
+        retryCount: task.retryCount + 1,
+      }];
+    }
+
     // Reset ALL chunks to pending for cancelled tasks (no partial progress to save).
-    // For failed tasks, only reset the failed chunks.
+    // For failed tasks, only reset the failed chunks unless partial data exists.
     const hasPartialFailure = task.state === 'failed' &&
       task.chunks.some(c => c.chunkState === 'done') &&
       task.chunks.some(c => c.chunkState === 'failed');
-    if (hasPartialFailure) {
-      // Clean up stale _ocrflow_tmp from previous partial run before retry.
-      // After reset, new chunks will be created; old temp files are orphaned otherwise.
-      try { cleanupTempFiles(task); } catch {}
-    }
     const hasMissingDoneResults = task.chunks.some(c => c.chunkState === 'done' && (!c.resultUrl || !existsSync(c.resultUrl)));
-    const targets = task.state === 'cancelled' || hasMissingDoneResults || hasPartialFailure
+    const targets = task.state === 'cancelled' || hasMissingDoneResults || hasPartialFailure || hasMissingChunkFiles
       ? task.chunks
       : (task.chunks.filter(c => c.chunkState === 'failed').length > 0
           ? task.chunks.filter(c => c.chunkState === 'failed')
