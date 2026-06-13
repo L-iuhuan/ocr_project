@@ -99,7 +99,18 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
   return new Promise(resolveResult => {
     let child;
     try {
-      child = spawn(command, args, { cwd, windowsHide: true });
+      child = spawn(command, args, {
+        cwd,
+        windowsHide: true,
+        env: (() => {
+          // When the MCP server itself runs via ELECTRON_RUN_AS_NODE=1,
+          // the child OCRFlow process MUST NOT inherit this flag, otherwise
+          // Electron treats "--headless" as a Node.js flag and crashes.
+          const env = { ...process.env };
+          delete env.ELECTRON_RUN_AS_NODE;
+          return env;
+        })(),
+      });
     } catch (err: any) {
       resolveResult({
         exitCode: 1,
@@ -113,13 +124,34 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
 
     child.stdout.on('data', data => { stdout = appendCapped(stdout, data.toString()); });
     child.stderr.on('data', data => { stderr = appendCapped(stderr, data.toString()); });
+
+    const OCRFLOW_TIMEOUT_MS = 3_600_000; // 1 hour max for large documents
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { child.kill(); } catch {}
+      resolveResult({
+        exitCode: 1,
+        summaryText: JSON.stringify({
+          ok: false,
+          error: 'OCRFlow timed out after ' + Math.round(OCRFLOW_TIMEOUT_MS / 1000) + 's',
+          command,
+          args,
+          cwd,
+        }, null, 2),
+      });
+    }, OCRFLOW_TIMEOUT_MS);
+
     child.on('error', err => {
+      clearTimeout(timer);
       resolveResult({
         exitCode: 1,
         summaryText: JSON.stringify({ ok: false, error: err.message, command, args, cwd }, null, 2),
       });
     });
     child.on('close', code => {
+      clearTimeout(timer);
+      if (timedOut) return;
       const parsed = extractJson(stdout);
       if (parsed) {
         const forcedError = typeof parsed === 'object' && parsed !== null && (parsed as any).ok === false;
@@ -166,7 +198,9 @@ function resolvePackagedExecutable(appRoot: string): string | null {
   const winExe = resolve(appRoot, '..', '..', 'OCRFlow.exe');
   if (process.platform === 'win32' && existsSync(winExe)) return winExe;
 
-  const macExe = resolve(appRoot, '..', '..', 'MacOS', 'OCRFlow');
+  // macOS .app bundle: app.asar.unpacked is at Contents/Resources/app.asar.unpacked/
+  // OCRFlow binary is at Contents/MacOS/OCRFlow → 3 levels up from asar root
+  const macExe = resolve(appRoot, '..', '..', '..', 'MacOS', 'OCRFlow');
   if (process.platform === 'darwin' && existsSync(macExe)) return macExe;
 
   return null;
