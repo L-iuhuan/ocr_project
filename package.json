@@ -58,7 +58,7 @@
       "dist-electron/mcp-server.js"
     ],
     "win": {
-      "target": "portable",
+      "target": "nsis",
       "icon": "ocr.ico",
       "signAndEditExecutable": false
     },
