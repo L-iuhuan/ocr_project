@@ -155,7 +155,7 @@ export class PythonBridge {
     const ext = filePath.split('.').pop()?.toLowerCase();
     const isPdf = ext === 'pdf';
 
-    const resp = await axios.post(`http://localhost:${this.port}/layout-parsing`, {
+    const resp = await axios.post(`http://127.0.0.1:${this.port}/layout-parsing`, {
       file: base64,
       fileType: isPdf ? 0 : 1,
       file_name: filePath.split(/[/\\]/).pop() || 'document'
@@ -171,7 +171,7 @@ export class PythonBridge {
   async healthCheck(): Promise<boolean> {
     if (!this.healthy) return false;
     try {
-      const resp = await axios.get(`http://localhost:${this.port}/health`, { timeout: 2000 });
+      const resp = await axios.get(`http://127.0.0.1:${this.port}/health`, { timeout: 2000 });
       return resp.status === 200;
     } catch {
       return false;
@@ -205,7 +205,7 @@ export class PythonBridge {
     while (Date.now() - start < timeout) {
       if (this.healthy) return;
       try {
-        const resp = await axios.get(`http://localhost:${this.port}/health`, { timeout: 1000 });
+        const resp = await axios.get(`http://127.0.0.1:${this.port}/health`, { timeout: 1000 });
         if (resp.status === 200) { this.healthy = true; return; }
       } catch {}
       await new Promise(r => setTimeout(r, 1000));
