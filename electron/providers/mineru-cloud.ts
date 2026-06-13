@@ -389,9 +389,8 @@ export class MinerUCloudProvider implements IProvider {
     signal?.throwIfAborted();
     if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
 
-    // Agent download
     if (this.agentTaskIds.has(taskId)) {
-      return this.downloadAgent(taskId, destDir, signal);
+      return this.downloadAgent(taskId, destDir, signal).finally(() => this.agentTaskIds.delete(taskId));
     }
 
     // Precision download

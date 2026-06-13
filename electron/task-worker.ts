@@ -119,6 +119,9 @@ class TaskWorker {
   }
 
   addTasks(tasks: Task[]): void {
+    for (const t of tasks) {
+      if (!existsSync(t.outputDir)) { try { mkdirSync(t.outputDir, { recursive: true }); } catch {} }
+    }
     this.log('添加 ' + tasks.length + ' 个任务，队列: ' + (this.queue.length + tasks.length));
     this.queue.push(...tasks);
     this.emitUpdate();

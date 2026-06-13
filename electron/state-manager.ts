@@ -95,7 +95,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
       paddleocrLocal: { enabled: false, port: 51987, pythonPath: process.platform === 'darwin' ? 'python3' : 'python' }
     },
     providerPriority: ['mineru-cloud', 'paddleocr-cloud'],
-    outputDir: join(app.getPath('documents'), 'OCRFlow_Output'),
+    outputDir: (() => {
+      try { return join(app.getPath('documents'), 'OCRFlow_Output'); }
+      catch { return join(require('os').homedir(), 'Documents', 'OCRFlow_Output'); }
+    })(),
     outputFormats: ['md'],
     outputFileNameTemplate: '{date}/{name}',
     concurrency: 2,

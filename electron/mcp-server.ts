@@ -157,7 +157,9 @@ function resolveOcrflowCommand(): { command: string; baseArgs: string[]; cwd: st
   const localExe = resolve(appRoot, process.platform === 'win32' ? 'OCRFlow.exe' : 'OCRFlow');
   if (existsSync(localExe)) return { command: localExe, baseArgs: ['--headless', 'parse'], cwd: appRoot };
 
-  return { command: process.platform === 'win32' ? 'OCRFlow.exe' : 'OCRFlow', baseArgs: ['--headless', 'parse'], cwd: appRoot };
+  const cmd = process.platform === 'win32' ? 'OCRFlow.exe' : 'OCRFlow';
+  process.stderr.write('[ocrflow-mcp] Cannot find OCRFlow executable. Set OCRFLOW_COMMAND env or ensure ' + cmd + ' is on PATH.\n');
+  return { command: cmd, baseArgs: ['--headless', 'parse'], cwd: appRoot };
 }
 
 function resolvePackagedExecutable(appRoot: string): string | null {
