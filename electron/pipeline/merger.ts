@@ -402,7 +402,7 @@ export function cleanupTempFiles(task: Task): void {
         for (const entry of readdirSync(tmpParent)) {
           try { rmSync(join(tmpParent, entry), { recursive: true, force: true }); } catch {}
         }
-        rmSync(tmpParent, { force: true });
+        rmSync(tmpParent, { recursive: true, force: true });
       }
     }
   } catch {}
@@ -489,6 +489,10 @@ function renderHtml(title: string, markdown: string): string {
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(title)}</title>
+  <script>
+    window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\\\(', '\\\\)']], displayMath: [['$$', '$$'], ['\\\\[', '\\\\]']] }, svg: { fontCache: 'global' } };
+  </script>
+  <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
            line-height: 1.75; margin: 40px auto; max-width: 920px; padding: 0 24px; color: #111827; background: #fff; }
@@ -839,6 +843,8 @@ function stripFormatMarkers(text: string): string {
     .replace(/\*(.+?)\*/g, '$1')
     .replace(/_([^_]+)_/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
+    .replace(/\$\$([^$]+)\$\$/g, '$1')
+    .replace(/\$([^$]+)\$/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links → text
     .trim();
 }
@@ -954,7 +960,12 @@ function blockToDocxXml(
 /** Convert inline markdown text to OOXML <w:r> runs (bold, italic, code) */
 function inlineToDocxRuns(text: string): string {
   // Strip HTML tags, keep <br> as line breaks
-  const cleaned = text.replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').trim();
+  const cleaned = text
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\$\$([^$]+)\$\$/g, '$1')
+    .replace(/\$([^$]+)\$/g, '$1')
+    .trim();
   if (!cleaned) return `<w:r><w:t xml:space="preserve"></w:t></w:r>`;
 
   let xml = '';

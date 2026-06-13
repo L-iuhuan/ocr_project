@@ -67,8 +67,10 @@ export class MinerUCloudProvider implements IProvider {
   private token: string;
   private useAgentOnly: boolean;
   private precisionQuotaExhausted: boolean = false;
-  // Track which mode a task_id was submitted in, so poll/download use the right endpoint
+  // Track which mode a task_id was submitted in, so poll/download use the right endpoint.
+  // Precision batch IDs can look like UUIDs too; never guess by shape.
   private agentTaskIds = new Set<string>();
+  private precisionTaskIds = new Set<string>();
 
   constructor(token: string) {
     this.token = token;
@@ -233,6 +235,7 @@ export class MinerUCloudProvider implements IProvider {
     signal?.throwIfAborted();
     if (onProgress) onProgress(80);
     console.log('[MinerU:Precision] Using batch_id=' + batchId + ' for polling');
+    this.precisionTaskIds.add(batchId);
     return batchId;
   }
 
@@ -423,7 +426,11 @@ export class MinerUCloudProvider implements IProvider {
       }
     }
 
-    // Fall back to Agent download
+    if (this.precisionTaskIds.has(taskId)) {
+      throw new Error('Precision download failed: ' + (httpError || 'no download link'));
+    }
+
+    // Fall back to Agent download only for unknown legacy task IDs.
     return this.downloadAgent(taskId, destDir, signal);
   }
 

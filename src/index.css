@@ -225,7 +225,7 @@ body {
 .win-ctrl-btn.win-close:hover { background: #c42b1c; color: #fff; }
 /* icons drawn with CSS — zero font baseline issues */
 .win-icon-min { width: 10px; height: 1.5px; background: currentColor; border-radius: 0; }
-.win-icon-max { width: 10px; height: 10px; border: 1.5px solid currentColor; border-radius: 1px; box-sizing: border-box; }
+.win-icon-max { width: 10px; height: 10px; border: 2px solid currentColor; border-radius: 1px; box-sizing: border-box; }
 .win-icon-close { position: relative; width: 12px; height: 12px; }
 .win-icon-close::before, .win-icon-close::after { content: ""; position: absolute; top: 50%; left: 50%; width: 13px; height: 1.5px; background: currentColor; border-radius: 0; }
 .win-icon-close::before { transform: translate(-50%, -50%) rotate(45deg); }
@@ -486,7 +486,7 @@ body {
   background: var(--glass-hover);
   border-color: var(--accent-border);
   transform: translateY(-1px);
-  box-shadow: var(--shadow), 0 0 0 1px var(--accent-border) inset;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.14), 0 0 0 1px var(--accent-border) inset;
 }
 .task-card:hover::before { opacity: 1; }
 

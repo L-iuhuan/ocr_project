@@ -12,6 +12,7 @@ import { taskWorker } from './task-worker';
 import { getProviderQuotas } from './page-counter';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, loadTasks } from './state-manager';
 import { AppSettings, ProviderStatus, Task, ProviderType } from './types';
+import { join } from 'path';
 import { ProviderHealth } from './providers/i-provider';
 import { pythonBridge } from './python-bridge';
 
@@ -345,6 +346,21 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('get-quotas', () => getProviderQuotas());
 
   ipcMain.handle('get-app-version', () => app.getVersion());
+
+  ipcMain.handle('get-mcp-config', () => {
+    const appPath = app.getAppPath();
+    const mcpPath = app.isPackaged
+      ? join(process.resourcesPath, 'app.asar.unpacked', 'dist-electron', 'mcp-server.js')
+      : join(appPath, 'dist-electron', 'mcp-server.js');
+    return JSON.stringify({
+      mcpServers: {
+        ocrflow: {
+          command: 'node',
+          args: [mcpPath],
+        }
+      }
+    }, null, 2);
+  });
 }
 
 async function testHttpEndpoint(baseUrl: string, label: string, path: string): Promise<{ ok: boolean; message: string }> {

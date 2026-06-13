@@ -196,6 +196,7 @@ export interface ElectronAPI {
   setProviderPriority(providers: string[]): void;
   getProviderQuotas(): Promise<unknown[]>;
   getAppVersion(): Promise<string>;
+  getMcpConfig(): Promise<string>;
   onTasksUpdate(cb: (tasks: unknown[]) => void): () => void;
   onLog(cb: (log: unknown) => void): () => void;
   onProgress(cb: (progress: unknown) => void): () => void;

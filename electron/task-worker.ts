@@ -1,3 +1,4 @@
+import { setMaxListeners } from 'events';
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync, readFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
 import AdmZip from 'adm-zip';
@@ -183,7 +184,11 @@ class TaskWorker {
 
     // Reset ALL chunks to pending for cancelled tasks (no partial progress to save).
     // For failed tasks, only reset the failed chunks.
-    const targets = task.state === 'cancelled'
+    const hasMissingDoneResults = task.chunks.some(c => c.chunkState === 'done' && (!c.resultUrl || !existsSync(c.resultUrl)));
+    const hasPartialFailure = task.state === 'failed' &&
+      task.chunks.some(c => c.chunkState === 'done') &&
+      task.chunks.some(c => c.chunkState === 'failed');
+    const targets = task.state === 'cancelled' || hasMissingDoneResults || hasPartialFailure
       ? task.chunks
       : (task.chunks.filter(c => c.chunkState === 'failed').length > 0
           ? task.chunks.filter(c => c.chunkState === 'failed')
@@ -218,7 +223,8 @@ class TaskWorker {
   removeTask(jobId: string): void {
     const idx = this.queue.findIndex(t => t.jobId === jobId);
     if (idx === -1) return;
-    this.queue.splice(idx, 1);
+    const [removed] = this.queue.splice(idx, 1);
+    try { cleanupTempFiles(removed); } catch {}
     this.log('任务已移除: ' + jobId, 'info');
     this.emitUpdate();
     this.emitProgress();
@@ -263,6 +269,7 @@ class TaskWorker {
   private async processTask(task: Task): Promise<void> {
     // Create AbortController for this task
     const abortController = new AbortController();
+    setMaxListeners(100, abortController.signal);
     this.abortControllers.set(task.jobId, abortController);
 
     // Guard: if cancelled before we started, bail out immediately
@@ -830,8 +837,9 @@ class TaskWorker {
       imageOutputDir
     );
 
-    // Only cleanup if deleteChunkTemp is enabled (default: true)
-    if (settings.deleteChunkTemp !== false) {
+    // Only cleanup complete tasks immediately. Partial outputs keep temp data so
+    // retry can reuse already-finished chunks without losing pages.
+    if (!partial && settings.deleteChunkTemp !== false) {
       cleanupTempFiles(task);
     }
     this.log('输出文件: ' + written.map(p => basename(p)).join(', '), 'success', task.jobId);

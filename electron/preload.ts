@@ -27,6 +27,7 @@ const electronAPI = {
   setProviderPriority: (providers: string[]) => ipcRenderer.send('set-provider-priority', providers),
   getProviderQuotas: () => ipcRenderer.invoke('get-quotas'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  getMcpConfig: () => ipcRenderer.invoke('get-mcp-config'),
   onTasksUpdate: (cb: (tasks: unknown[]) => void) => {
     const handler = (_: unknown, tasks: unknown[]) => cb(tasks);
     ipcRenderer.on('tasks-update', handler);
