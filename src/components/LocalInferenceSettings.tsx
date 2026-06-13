@@ -72,8 +72,8 @@ export default function LocalInferenceSettings({
       <div className="sec">
         <div className="sec-title">本地 OCR 引擎</div>
         <div className="sec-desc">
-          在 localhost 指定端口启动 OCR 服务（PaddleOCR / MinerU 等均可）。<br />
-          若服务已在运行则直接连接；若未运行，提供 Python 路径后可自动启动。
+          连接本机已启动的 OCR 服务（PaddleOCR / MinerU 等兼容 /layout-parsing 的服务）。<br />
+          若指定端口没有服务，OCRFlow 会尝试用下方 Python 路径启动内置简易服务。
         </div>
         <div className="card">
           <div className="row">

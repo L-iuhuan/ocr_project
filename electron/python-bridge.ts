@@ -60,7 +60,15 @@ export class PythonBridge {
       await this.stop();
     }
 
-    // Find available port
+    // If the configured port already has a compatible OCR service, use it.
+    // This allows users to run PaddleOCR/MinerU local services externally.
+    if (preferredPort && await isServiceHealthy(preferredPort)) {
+      this.port = preferredPort;
+      this.healthy = true;
+      return this.port;
+    }
+
+    // Find available port for OCRFlow's bundled fallback server.
     this.port = preferredPort
       ? await findAvailablePort(preferredPort, Math.max(preferredPort, 52987))
       : await findAvailablePort(51987, 52987);
@@ -225,6 +233,15 @@ function resolvePythonServerScript(): string {
   if (existsSync(unpacked)) return unpacked;
 
   return normal;
+}
+
+async function isServiceHealthy(port: number): Promise<boolean> {
+  try {
+    const resp = await axios.get(`http://127.0.0.1:${port}/health`, { timeout: 2000 });
+    return resp.status === 200;
+  } catch {
+    return false;
+  }
 }
 
 function findAvailablePort(start: number, end: number): Promise<number> {

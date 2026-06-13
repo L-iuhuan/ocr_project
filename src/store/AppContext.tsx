@@ -55,7 +55,7 @@ function todayStr(): string {
 
 const initialLogs: LogEntryWithId[] = [
   { id: ++logIdCounter, timestamp: new Date().toISOString(), level: 'info', message: 'OCRFlow 已启动，拖入文件开始处理。' },
-  { id: ++logIdCounter, timestamp: new Date().toISOString(), level: 'info', message: '当前 Provider 优先级: MinerU Cloud → Baidu PaddleOCR-VL' }
+  { id: ++logIdCounter, timestamp: new Date().toISOString(), level: 'info', message: 'Provider 优先级会按设置页保存的顺序执行。' }
 ];
 
 const initialState: AppState = {
