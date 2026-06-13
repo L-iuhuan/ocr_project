@@ -74,7 +74,7 @@
       "shortcutName": "OCRFlow"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": ["zip"],
       "icon": "ocr.png",
       "category": "public.app-category.productivity",
       "gatekeeperAssess": false

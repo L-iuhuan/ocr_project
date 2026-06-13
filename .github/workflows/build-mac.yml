@@ -44,5 +44,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ocrflow-macos
-          path: release/*.dmg
+          path: |
+            release/*.zip
+            release/*.dmg
           if-no-files-found: warn
