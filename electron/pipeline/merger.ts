@@ -63,7 +63,7 @@ export function collectImages(
   const mappings = new Map<string, string>();
   if (!doneChunks.length) return mappings;
 
-  ensureDir(imageOutputDir);
+  let firstImageWritten = false;
 
   for (const chunk of doneChunks) {
     if (!chunk.resultUrl) continue;
@@ -90,6 +90,7 @@ export function collectImages(
       const destPath = join(imageOutputDir, uniqueName);
 
       try {
+        if (!firstImageWritten) { ensureDir(imageOutputDir); firstImageWritten = true; }
         copyFileSync(imgPath, destPath);
         mappings.set(imgPath, destPath);
 

@@ -837,13 +837,12 @@ class TaskWorker {
     } else {
       imageOutputDir = customDir;
     }
-    ensureDir(imageOutputDir);
-
     // Only collect + rewrite images if keepImages is enabled
     let finalMarkdown: string;
     if (settings.keepImages !== false) {
       const imageMappings = collectImages(task, doneChunks, imageOutputDir);
       if (imageMappings.size > 0) {
+        ensureDir(imageOutputDir);
         this.log('收集到 ' + imageMappings.size + ' 个映射的图片文件', 'info', task.jobId);
       }
       const mergedMarkdown = mergeChunks(task, doneChunks);
