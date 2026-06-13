@@ -349,16 +349,20 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('get-mcp-config', () => {
     const appPath = app.getAppPath();
-    const mcpPath = app.isPackaged
+    const mcpServerJs = app.isPackaged
       ? join(process.resourcesPath, 'app.asar.unpacked', 'dist-electron', 'mcp-server.js')
       : join(appPath, 'dist-electron', 'mcp-server.js');
+    const exePath = app.isPackaged
+      ? app.getPath('exe')
+      : join(appPath, '..', '..', 'node_modules', '.bin', process.platform === 'win32' ? 'electron.cmd' : 'electron');
     return JSON.stringify({
       mcpServers: {
         ocrflow: {
-          command: 'node',
-          args: [mcpPath],
-        }
-      }
+          command: app.isPackaged ? exePath : 'node',
+          args: [mcpServerJs],
+          env: app.isPackaged ? { ELECTRON_RUN_AS_NODE: '1' } : undefined,
+        },
+      },
     }, null, 2);
   });
 }

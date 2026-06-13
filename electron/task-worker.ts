@@ -7,7 +7,7 @@ import { AppSettings, Chunk, GlobalProgress, Task, ProviderType } from './types'
 import { IProvider, ParsedChunkResult } from './providers/i-provider';
 import { canProviderHandle, getProvider } from './providers/provider-registry';
 import { incrementFailedCount, incrementPageCount } from './page-counter';
-import { loadSettings, saveTasks } from './state-manager';
+import { loadSettings, saveTasks, getTempDir } from './state-manager';
 import { mergeChunks, writeMergedOutputs, cleanupTempFiles, collectImages, rewriteImagePaths } from './pipeline/merger';
 import { validateTask } from './pipeline/validator';
 import { getProviderQuotas } from './page-counter';
@@ -765,7 +765,7 @@ class TaskWorker {
           const pages = await subDoc.copyPages(srcDoc, indices);
           for (const page of pages) subDoc.addPage(page);
 
-          const subPath = chunk.chunkPath.replace(/\.pdf$/i, `_sub${s}.pdf`);
+          const subPath = join(getTempDir(), basename(chunk.chunkPath.replace(/\.pdf$/i, `_sub${s}.pdf`)));
           writeFileSync(subPath, await subDoc.save());
 
           const pageStart = (chunk.pageStart || 1) + start;
@@ -886,7 +886,7 @@ class TaskWorker {
       const pages = await subDoc.copyPages(srcDoc, indices);
       for (const page of pages) subDoc.addPage(page);
 
-      const subPath = chunk.chunkPath.replace(/\.pdf$/i, `_d${s}.pdf`);
+      const subPath = join(getTempDir(), basename(chunk.chunkPath.replace(/\.pdf$/i, `_d${s}.pdf`)));
       writeFileSync(subPath, await subDoc.save());
 
       const pageStart = (chunk.pageStart || 1) + start;
