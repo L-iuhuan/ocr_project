@@ -6,7 +6,7 @@
   "author": "LIU HUAN",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "build": "tsc && vite build && electron-builder && node -e \"var p=require('path'),f=require('fs'),d='release',v=f.readdirSync(d);v.forEach(function(n){if(n.endsWith('.blockmap')||n==='latest.yml'||n==='builder-debug.yml')f.unlinkSync(p.join(d,n))})\"",
     "parse": "electron . --headless parse",
     "mcp": "tsc && node dist-electron/mcp-server.js",
     "mcp:server": "node dist-electron/mcp-server.js",
@@ -43,6 +43,7 @@
   "build": {
     "appId": "com.ocrflow.app",
     "productName": "OCRFlow",
+    "publish": null,
     "afterPack": "./scripts/afterPack.js",
     "directories": {
       "output": "release"
