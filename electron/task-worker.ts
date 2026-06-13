@@ -187,17 +187,15 @@ class TaskWorker {
       this.log('重试检测到部分临时分块缺失，将按页段重建对应分块', 'warn', jobId);
     }
 
-    // Reset ALL chunks to pending for cancelled tasks (no partial progress to save).
-    // For failed tasks, only reset the failed chunks unless partial data exists.
-    const hasPartialFailure = task.state === 'failed' &&
-      task.chunks.some(c => c.chunkState === 'done') &&
-      task.chunks.some(c => c.chunkState === 'failed');
-    const hasMissingDoneResults = task.chunks.some(c => c.chunkState === 'done' && (!c.resultUrl || !existsSync(c.resultUrl)));
-    const targets = task.state === 'cancelled' || hasMissingDoneResults || hasPartialFailure || hasMissingChunkFiles
+    // Reset all chunks only for cancelled tasks. For failed partial tasks,
+    // preserve successful chunks and retry only failed or missing-result chunks.
+    const targets = task.state === 'cancelled'
       ? task.chunks
-      : (task.chunks.filter(c => c.chunkState === 'failed').length > 0
-          ? task.chunks.filter(c => c.chunkState === 'failed')
-          : task.chunks);
+      : task.chunks.filter(c =>
+          c.chunkState === 'failed' ||
+          (c.chunkState === 'done' && (!c.resultUrl || !existsSync(c.resultUrl)))
+        );
+    if (targets.length === 0) targets.push(...task.chunks);
 
     for (const chunk of targets) {
       chunk.chunkState = 'pending';
@@ -366,7 +364,12 @@ class TaskWorker {
         const currentPages = this.chunkPageCount(task, chunk);
         const degraded = degradeChunkSize(currentPages);
         const retries = chunk.retryCount || 0;
+        const transientNetworkError = isTransientNetworkError(err);
+        if (transientNetworkError) {
+          this.log('分块失败疑似网络/下载问题，不自动降级拆分；可稍后直接重试该分块', 'warn', task.jobId);
+        }
         if (
+          !transientNetworkError &&
           degraded > 0 &&
           retries < 3 &&
           chunk.chunkPath &&
@@ -982,6 +985,15 @@ class TaskWorker {
       pct: t > 0 ? Math.round((done + failed) / t * 100) : 0
     });
   }
+}
+
+function isTransientNetworkError(err: any): boolean {
+  const msg = String(err?.message || err || '').toLowerCase();
+  const code = String(err?.code || '').toLowerCase();
+  return [
+    'econnreset', 'econnrefused', 'etimedout', 'enotfound', 'socket',
+    'tls connection', 'network', 'timeout', 'aborted', 'fetch failed'
+  ].some(token => msg.includes(token) || code.includes(token));
 }
 
 function cleanupPartialOutputs(task: Task): void {
