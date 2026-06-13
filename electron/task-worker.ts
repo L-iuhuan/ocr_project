@@ -182,20 +182,9 @@ class TaskWorker {
       return;
     }
 
-    // If previous retry/degrade temp chunks were cleaned or moved, fall back to
-    // the original source file and let normal auto-degrade split it again.
     const hasMissingChunkFiles = task.chunks.some(c => c.chunkPath && !existsSync(c.chunkPath));
-    if (hasMissingChunkFiles && task.sourcePaths?.[0] && existsSync(task.sourcePaths[0])) {
-      this.log('重试检测到临时分块缺失，回退为原始文件重新处理', 'warn', jobId);
-      task.chunks = [{
-        chunkSequence: 0,
-        chunkPath: task.sourcePaths[0],
-        pageStart: 1,
-        pageEnd: Math.max(1, task.pageCount || 1),
-        chunkState: 'pending',
-        progress: 0,
-        retryCount: task.retryCount + 1,
-      }];
+    if (hasMissingChunkFiles) {
+      this.log('重试检测到部分临时分块缺失，将按页段重建对应分块', 'warn', jobId);
     }
 
     // Reset ALL chunks to pending for cancelled tasks (no partial progress to save).
@@ -512,6 +501,7 @@ class TaskWorker {
   }
 
   private async processChunk(task: Task, chunk: Chunk, provider: IProvider, signal: AbortSignal): Promise<void> {
+    await this.ensureChunkFile(task, chunk);
     if (!chunk.chunkPath) throw Object.assign(new Error('分块 ' + chunk.chunkSequence + ' 路径为空'), { code: 'CHUNK_NO_PATH' });
     if (!existsSync(chunk.chunkPath)) throw Object.assign(new Error('分块文件不存在: ' + chunk.chunkPath), { code: 'CHUNK_FILE_MISSING' });
 
@@ -855,6 +845,9 @@ class TaskWorker {
 
     // Only cleanup complete tasks immediately. Partial outputs keep temp data so
     // retry can reuse already-finished chunks without losing pages.
+    if (!partial) {
+      cleanupPartialOutputs(task);
+    }
     if (!partial && settings.deleteChunkTemp !== false) {
       cleanupTempFiles(task);
     }
@@ -879,6 +872,35 @@ class TaskWorker {
   private chunkLabel(task: Task, chunk: Chunk): string {
     if (chunk.pageStart && chunk.pageEnd) return '第' + chunk.pageStart + '-' + chunk.pageEnd + '页';
     return task.originalName + ' #' + (chunk.chunkSequence + 1);
+  }
+
+  private async ensureChunkFile(task: Task, chunk: Chunk): Promise<void> {
+    if (chunk.chunkPath && existsSync(chunk.chunkPath)) return;
+    const sourcePath = task.sourcePaths?.[0];
+    if (!sourcePath || !existsSync(sourcePath)) {
+      throw Object.assign(new Error('原始文件不存在，无法重建分块: ' + (sourcePath || 'unknown')), { code: 'SOURCE_FILE_MISSING' });
+    }
+    if (task.fileType !== 'pdf' || !chunk.pageStart || !chunk.pageEnd) {
+      chunk.chunkPath = sourcePath;
+      return;
+    }
+
+    const { PDFDocument } = await import('pdf-lib');
+    const srcDoc = await PDFDocument.load(readFileSync(sourcePath), { ignoreEncryption: true });
+    const totalPages = srcDoc.getPageCount();
+    const start = Math.max(0, Math.min(totalPages - 1, chunk.pageStart - 1));
+    const end = Math.max(start + 1, Math.min(totalPages, chunk.pageEnd));
+    const subDoc = await PDFDocument.create();
+    const pages = await subDoc.copyPages(srcDoc, srcDoc.getPageIndices().slice(start, end));
+    for (const page of pages) subDoc.addPage(page);
+
+    const rebuiltPath = join(
+      getTempDir(),
+      basename(sourcePath, '.pdf') + '_retry_p' + chunk.pageStart + '-' + chunk.pageEnd + '_' + task.jobId.slice(-6) + '.pdf'
+    );
+    writeFileSync(rebuiltPath, await subDoc.save());
+    chunk.chunkPath = rebuiltPath;
+    this.log('已重建缺失分块: 第' + chunk.pageStart + '-' + chunk.pageEnd + '页', 'info', task.jobId);
   }
 
   /**
@@ -959,6 +981,27 @@ class TaskWorker {
       chunkCompleted,
       pct: t > 0 ? Math.round((done + failed) / t * 100) : 0
     });
+  }
+}
+
+function cleanupPartialOutputs(task: Task): void {
+  const rawBase = basename(task.originalName).replace(/\.[^.]+$/, '');
+  const stack = [task.outputDir];
+  while (stack.length > 0) {
+    const dir = stack.pop()!;
+    if (!existsSync(dir)) continue;
+    let entries: string[] = [];
+    try { entries = readdirSync(dir); } catch { continue; }
+    for (const entry of entries) {
+      const full = join(dir, entry);
+      let st;
+      try { st = statSync(full); } catch { continue; }
+      if (st.isDirectory()) {
+        if (entry !== '_ocrflow_tmp' && entry !== 'images') stack.push(full);
+      } else if (entry.includes('_partial') && entry.includes(rawBase)) {
+        try { require('fs').rmSync(full, { force: true }); } catch {}
+      }
+    }
   }
 }
 
