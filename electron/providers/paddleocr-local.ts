@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { PROVIDER_LIMITS, ProviderType, ProviderLimits } from '../types';
 import { IProvider, ParsedChunkResult, ProviderHealth } from './i-provider';
 import { existsSync, mkdirSync, writeFileSync } from 'fs';
@@ -93,6 +94,13 @@ export class PaddleOCRLocalProvider implements IProvider {
     if (!this.enabled) {
       return { available: false, message: '本地 OCR 未启用' };
     }
+    try {
+      const resp = await axios.get(`http://127.0.0.1:${this.port}/health`, { timeout: 2000 });
+      if (resp.status === 200) {
+        return { available: true, message: `本地 OCR 已运行 (端口 ${this.port})` };
+      }
+    } catch {}
+
     if (pythonBridge.isRunning()) {
       const ok = await pythonBridge.healthCheck();
       return { available: ok, message: ok ? `本地 OCR 已运行 (端口 ${pythonBridge.getPort()})` : '本地 OCR 服务未响应' };
@@ -114,6 +122,7 @@ export class PaddleOCRLocalProvider implements IProvider {
     const images: Record<string, string> = {};
 
     for (const item of layoutResults) {
+      const beforeCount = chunks.length;
       const markdown = item?.markdown;
       if (typeof markdown === 'string') {
         chunks.push(markdown);
@@ -123,6 +132,19 @@ export class PaddleOCRLocalProvider implements IProvider {
       if (markdown?.images && typeof markdown.images === 'object') {
         Object.assign(images, markdown.images);
       }
+
+      // External PaddleOCR/MinerU-compatible local services may return only
+      // prunedResult.parsing_res_list, not markdown.text.
+      const parsingList = item?.prunedResult?.parsing_res_list;
+      if (chunks.length === beforeCount && Array.isArray(parsingList)) {
+        const lines = parsingList
+          .map((block: any) => normalizeBlockContent(block))
+          .filter(Boolean);
+        if (lines.length > 0) chunks.push(lines.join('\n\n'));
+      }
+      if (item?.outputImages && typeof item.outputImages === 'object') {
+        Object.assign(images, item.outputImages);
+      }
     }
 
     return {
@@ -131,4 +153,13 @@ export class PaddleOCRLocalProvider implements IProvider {
       images
     };
   }
+}
+
+function normalizeBlockContent(block: any): string {
+  const content = String(block?.block_content || '').trim();
+  if (!content) return '';
+  const label = String(block?.block_label || '').toLowerCase();
+  if (label.includes('title')) return '## ' + content;
+  if (label === 'formula') return '$$\n' + content + '\n$$';
+  return content;
 }
