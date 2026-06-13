@@ -78,6 +78,7 @@ async function analyzePDF(info: FileInfo): Promise<FileInfo> {
   }
 
   // ---- Tier 3: size estimation ----
+  if (info.sizeBytes === 0) return { ...info, pageCount: 0 };
   const estimated = Math.max(1, Math.ceil(info.sizeBytes / 150000));
   console.warn(`[Preprocessor] Size fallback: "${info.path}" → ~${estimated} pages (${(info.sizeBytes/1024/1024).toFixed(1)}MB)`);
   return { ...info, pageCount: estimated };

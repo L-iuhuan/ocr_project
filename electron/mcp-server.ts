@@ -154,6 +154,9 @@ function resolveOcrflowCommand(): { command: string; baseArgs: string[]; cwd: st
   const packaged = resolvePackagedExecutable(appRoot);
   if (packaged) return { command: packaged, baseArgs: ['--headless', 'parse'], cwd: dirname(packaged) };
 
+  const localExe = resolve(appRoot, process.platform === 'win32' ? 'OCRFlow.exe' : 'OCRFlow');
+  if (existsSync(localExe)) return { command: localExe, baseArgs: ['--headless', 'parse'], cwd: appRoot };
+
   return { command: process.platform === 'win32' ? 'OCRFlow.exe' : 'OCRFlow', baseArgs: ['--headless', 'parse'], cwd: appRoot };
 }
 
