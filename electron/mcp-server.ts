@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -25,10 +25,16 @@ interface ParseInput {
   chunkSize?: number;
 }
 
+const APP_VERSION: string = (() => {
+  try { return require('../package.json').version; } catch {}
+  try { return JSON.parse(readFileSync(join(resolve(__dirname, '..'), 'package.json'), 'utf-8')).version; } catch {}
+  return '0.0.0';
+})();
+
 let activeRun = false;
 
 async function main(): Promise<void> {
-  const server = new McpServer({ name: 'ocrflow', version: '1.1.2' });
+  const server = new McpServer({ name: 'ocrflow', version: APP_VERSION });
 
   server.registerTool(
     'parse_documents',
