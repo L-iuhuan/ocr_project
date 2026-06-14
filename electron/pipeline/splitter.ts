@@ -40,16 +40,17 @@ export async function splitFileByProvider(
   return { chunks, totalChunks: 1 };
 }
 
-const SPLIT_SIZE_LIMIT = 200 * 1024 * 1024;
-
 async function splitPDF(file: FileInfo, maxPagesPerChunk: number, jobId?: string, outputDir?: string): Promise<SplitResult> {
-  const SPLIT_SIZE_LIMIT = 200 * 1024 * 1024;
-  if (file.sizeBytes > SPLIT_SIZE_LIMIT) {
-    console.warn(`[Splitter] File too large for local split (${(file.sizeBytes/1024/1024).toFixed(0)}MB), treating as single chunk`);
+  const HARD_MEMORY_LIMIT = 500 * 1024 * 1024;
+  if (file.sizeBytes > HARD_MEMORY_LIMIT) {
+    console.warn(`[Splitter] File too large for local split (${(file.sizeBytes/1024/1024).toFixed(0)}MB > ${HARD_MEMORY_LIMIT/1024/1024}MB), treating as single chunk — provider may reject it`);
     return {
       chunks: [createChunk(file.path, 0, 1, Math.max(1, file.pageCount))],
       totalChunks: 1,
     };
+  }
+  if (file.sizeBytes > 200 * 1024 * 1024) {
+    console.warn(`[Splitter] Large file (${(file.sizeBytes/1024/1024).toFixed(0)}MB), splitting anyway to respect provider file-size limits`);
   }
   const buffer = readFileSync(file.path);
   const srcDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
