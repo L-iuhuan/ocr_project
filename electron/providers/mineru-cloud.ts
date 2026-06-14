@@ -138,8 +138,8 @@ export class MinerUCloudProvider implements IProvider {
   async submit(chunkPath: string, onProgress?: (pct: number) => void, signal?: AbortSignal): Promise<string> {
     signal?.throwIfAborted();
 
-    var fileName = basename(chunkPath);
-    var fileSize = 0;
+    const fileName = basename(chunkPath);
+    let fileSize = 0;
     try {
       fileSize = statSync(chunkPath).size;
     } catch (e: any) {
@@ -174,7 +174,7 @@ export class MinerUCloudProvider implements IProvider {
     if (onProgress) onProgress(5);
 
     console.log('[MinerU:Precision] Requesting upload URL for ' + fileName);
-    var batchResp: any;
+    let batchResp: any;
     try {
       batchResp = await this.precisionClient.post('/file-urls/batch', {
         files: [{ name: fileName, data_id: fileName }],
@@ -182,14 +182,14 @@ export class MinerUCloudProvider implements IProvider {
       }, signal ? { signal } : {});
     } catch (e: any) {
       if (e.name === 'CanceledError' || e.name === 'AbortError') throw e;
-      var code = e.response?.data?.code;
+      const code = e.response?.data?.code;
       if (code === '-60018') {
         this.precisionQuotaExhausted = true;
         console.log('[MinerU:Precision] Quota exhausted (-60018), falling back to Agent');
         if (fileSize > 10 * 1024 * 1024) {
           throw new Error('Precision quota exhausted and file exceeds Agent 10MB limit. Please wait for daily quota reset.');
         }
-        var agentTaskId = await this.submitAgent(chunkPath, fileName, onProgress, signal);
+        const agentTaskId = await this.submitAgent(chunkPath, fileName, onProgress, signal);
         this.agentTaskIds.add(agentTaskId);
         return agentTaskId;
       }
@@ -198,18 +198,18 @@ export class MinerUCloudProvider implements IProvider {
 
     console.log('[MinerU:Precision] Upload URL response: ' + summarizePrecisionResponse(batchResp.data));
 
-    var data = batchResp.data?.data;
+    const data = batchResp.data?.data;
     if (!data) {
-      var _code = batchResp.data?.code;
-      var msg = batchResp.data?.msg || batchResp.data?.message || 'Unknown error';
-      throw new Error('MinerU Precision response error: code=' + _code + ' msg=' + msg);
+      const code = batchResp.data?.code;
+      const msg = batchResp.data?.msg || batchResp.data?.message || 'Unknown error';
+      throw new Error('MinerU Precision response error: code=' + code + ' msg=' + msg);
     }
 
-    var uploadUrl: string | undefined;
-    var fileUrlsField: string[] = ['file_urls', 'urls', 'upload_urls', 'fileUrls', 'uploadUrls'];
-    for (var _i = 0; _i < fileUrlsField.length; _i++) {
-      var field = fileUrlsField[_i];
-      var urls = (data as any)[field];
+    let uploadUrl: string | undefined;
+    const fileUrlsField: string[] = ['file_urls', 'urls', 'upload_urls', 'fileUrls', 'uploadUrls'];
+    for (let i = 0; i < fileUrlsField.length; i++) {
+      const field = fileUrlsField[i];
+      const urls = (data as any)[field];
       if (Array.isArray(urls) && urls.length > 0) {
         if (typeof urls[0] === 'string') {
           uploadUrl = urls[0];
@@ -222,18 +222,18 @@ export class MinerUCloudProvider implements IProvider {
       }
     }
     if (!uploadUrl) {
-      var respBody = JSON.stringify(batchResp.data);
+      const respBody = JSON.stringify(batchResp.data);
       throw new Error('MinerU Precision: Failed to get upload URL. Response: ' + respBody);
     }
 
-    var batchId = data.batch_id;
+    const batchId = data.batch_id;
     console.log('[MinerU:Precision] Upload URL received, batch_id=' + batchId);
 
     signal?.throwIfAborted();
     if (onProgress) onProgress(30);
     console.log('[MinerU:Precision] Uploading file with native fetch...');
 
-    var fileData = readFileSync(chunkPath);
+    const fileData = readFileSync(chunkPath);
     try {
       const fetchCtrl = new AbortController();
       const fetchTimer = setTimeout(() => fetchCtrl.abort(), 300000);
@@ -242,7 +242,7 @@ export class MinerUCloudProvider implements IProvider {
         signal.addEventListener('abort', () => fetchCtrl.abort(), { once: true });
       }
 
-      var putRes = await fetch(uploadUrl, {
+      const putRes = await fetch(uploadUrl, {
         method: 'PUT',
         body: fileData,
         signal: fetchCtrl.signal,
@@ -250,7 +250,7 @@ export class MinerUCloudProvider implements IProvider {
       clearTimeout(fetchTimer);
 
       if (!putRes.ok) {
-        var text = await putRes.text().catch(function() { return ''; });
+        const text = await putRes.text().catch(() => '');
         throw new Error('HTTP ' + putRes.status + (text ? ': ' + text : ''));
       }
     } catch (e: any) {
@@ -276,7 +276,7 @@ export class MinerUCloudProvider implements IProvider {
 
     // Step 1: POST JSON to get signed upload URL + task_id
     console.log('[MinerU:Agent] Requesting signed upload URL for ' + fileName + '...');
-    var step1Resp: any;
+    let step1Resp: any;
     try {
       step1Resp = await this.agentClient.post('/agent/parse/file', {
         file_name: fileName,
@@ -290,13 +290,13 @@ export class MinerUCloudProvider implements IProvider {
       throw new Error('MinerU Agent failed to get upload URL: ' + (e.response?.data?.msg || e.message));
     }
 
-    var body = step1Resp.data;
+    const body = step1Resp.data;
     if (body.code !== 0) {
       throw new Error('MinerU Agent error (code ' + body.code + '): ' + (body.msg || 'unknown'));
     }
 
-    var taskId = body.data?.task_id;
-    var fileUrl = body.data?.file_url;
+    const taskId = body.data?.task_id;
+    const fileUrl = body.data?.file_url;
     if (!taskId || !fileUrl) {
       throw new Error('MinerU Agent: No task_id/file_url in response: ' + JSON.stringify(body));
     }
@@ -351,13 +351,13 @@ export class MinerUCloudProvider implements IProvider {
     // Try Precision poll first if we have a token and quota is available
     if (this.token && !this.precisionQuotaExhausted) {
       try {
-        var resp = await this.precisionClient.get('/extract-results/batch/' + taskId, signal ? { signal } : {});
+        const resp = await this.precisionClient.get('/extract-results/batch/' + taskId, signal ? { signal } : {});
         console.log('[MinerU:Poll:Precision] batch_id=' + taskId + ' response: ' + summarizePrecisionResponse(resp.data));
 
-        var results = resp.data?.data?.extract_result;
+        const results = resp.data?.data?.extract_result;
         if (Array.isArray(results) && results.length > 0) {
-          var r = results[0];
-          var state = r.state;
+          const r = results[0];
+          const state = r.state;
           if (state === 'done') return 'done';
           if (state === 'failed') {
             console.log('[MinerU:Poll:Precision] failed: ' + (r.err_msg || ''));
@@ -383,9 +383,9 @@ export class MinerUCloudProvider implements IProvider {
   private async pollAgent(taskId: string, signal?: AbortSignal): Promise<'done' | 'failed' | 'running' | 'pending'> {
     signal?.throwIfAborted();
     try {
-      var resp = await this.agentClient.get('/agent/parse/' + taskId, signal ? { signal } : {});
+      const resp = await this.agentClient.get('/agent/parse/' + taskId, signal ? { signal } : {});
       console.log('[MinerU:Poll:Agent] task_id=' + taskId + ' state=' + resp.data?.data?.state);
-      var state = resp.data?.data?.state;
+      const state = resp.data?.data?.state;
 
       if (state === 'done') return 'done';
       if (state === 'failed') {
@@ -413,28 +413,29 @@ export class MinerUCloudProvider implements IProvider {
       return this.downloadAgent(taskId, destDir, signal).finally(() => this.agentTaskIds.delete(taskId));
     }
 
+    let httpError: string | undefined;
+
     // Precision download
     if (this.token && !this.precisionQuotaExhausted) {
-      var httpError: string | undefined;
       try {
-        var _resp = await this.precisionClient.get('/extract-results/batch/' + taskId, signal ? { signal } : {});
-        var respBody = _resp.data;
+        const _resp = await this.precisionClient.get('/extract-results/batch/' + taskId, signal ? { signal } : {});
+        const respBody = _resp.data;
         console.log('[MinerU:Download:Precision] batch_id=' + taskId + ' response: ' + summarizePrecisionResponse(respBody));
-        var _results = respBody?.data;
-        var resultList = _results?.extract_result;
+        const _results = respBody?.data;
+        const resultList = _results?.extract_result;
         if (Array.isArray(resultList) && resultList.length > 0) {
-          var _r = resultList[0];
-          var zipUrl = _r.full_zip_url || _r.zip_url || _r.download_url || _r.result_url
+          const _r = resultList[0];
+          const zipUrl = _r.full_zip_url || _r.zip_url || _r.download_url || _r.result_url
             || _r.fullZipUrl || _r.zipUrl || _r.downloadUrl;
           if (zipUrl) {
-            var destPath = join(destDir, taskId + '.zip');
+            const destPath = join(destDir, taskId + '.zip');
             console.log('[MinerU:Download] Fetching zip: host=' + new URL(zipUrl).hostname);
             await downloadFile(zipUrl, destPath, signal);
             return { rawPath: destPath };
           }
-          var dataZipUrl = _results?.full_zip_url || _results?.zip_url;
+          const dataZipUrl = _results?.full_zip_url || _results?.zip_url;
           if (dataZipUrl) {
-            var destPath2 = join(destDir, taskId + '.zip');
+            const destPath2 = join(destDir, taskId + '.zip');
             await downloadFile(dataZipUrl, destPath2, signal);
             return { rawPath: destPath2 };
           }
@@ -465,12 +466,12 @@ export class MinerUCloudProvider implements IProvider {
   private async downloadAgent(taskId: string, destDir: string, signal?: AbortSignal): Promise<ParsedChunkResult> {
     signal?.throwIfAborted();
     try {
-      var resp = await this.agentClient.get('/agent/parse/' + taskId, signal ? { signal } : {});
+      const resp = await this.agentClient.get('/agent/parse/' + taskId, signal ? { signal } : {});
       console.log('[MinerU:Download:Agent] response state=' + resp.data?.data?.state);
-      var mdUrl = resp.data?.data?.markdown_url;
+      const mdUrl = resp.data?.data?.markdown_url;
       if (mdUrl) {
-        var destPath = join(destDir, taskId + '.md');
-        var downloadResp = await axios.get(mdUrl, {
+        const destPath = join(destDir, taskId + '.md');
+        const downloadResp = await axios.get(mdUrl, {
           responseType: 'stream',
           ...(signal ? { signal } : {}),
         });
@@ -480,10 +481,10 @@ export class MinerUCloudProvider implements IProvider {
       }
 
       // Try content_url as fallback
-      var contentUrl = resp.data?.data?.content_url;
+      const contentUrl = resp.data?.data?.content_url;
       if (contentUrl) {
-        var contentPath = join(destDir, taskId + '.md');
-        var contentResp = await axios.get(contentUrl, {
+        const contentPath = join(destDir, taskId + '.md');
+        const contentResp = await axios.get(contentUrl, {
           responseType: 'text',
           ...(signal ? { signal } : {}),
         });
@@ -516,17 +517,16 @@ export class MinerUCloudProvider implements IProvider {
 
     // Token is set → test Precision API auth
     try {
-      var resp = await this.precisionClient.get('/extract-results/batch/_health_check', {
+      const resp = await this.precisionClient.get('/extract-results/batch/_health_check', {
         timeout: 10000,
-        validateStatus: function(s) { return s < 500; },
+        validateStatus: (s: number) => s < 500,
       });
 
-      // 401/403 → bad token
       if (resp.status === 401 || resp.status === 403) {
         return { available: false, message: 'Token 无效或已过期' };
       }
 
-      var code = resp.data?.code;
+      const code = resp.data?.code;
       if (code === 'A0202' || code === 'A0211') {
         return { available: false, message: 'Token 无效或已过期' };
       }

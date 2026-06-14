@@ -128,7 +128,12 @@ export function scanFiles(paths: string[]): FileInfo[] {
       allFiles.push(...scanDirectory(p));
     } else {
       const ext = extname(p).toLowerCase();
-      if (SUPPORTED_EXTENSIONS[ext]) allFiles.push(p);
+      if (!SUPPORTED_EXTENSIONS[ext]) continue;
+      try {
+        allFiles.push(realpathSync(p));
+      } catch {
+        allFiles.push(p);
+      }
     }
   }
 

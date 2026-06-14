@@ -52,7 +52,7 @@ function ClearMenu({ onClearDone, onClearFailed, onClearCancelled, onClearAll, d
     const h = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
-    setTimeout(() => document.addEventListener('mousedown', h), 50);
+    setTimeout(() => document.addEventListener('mousedown', h), 0);
     return () => document.removeEventListener('mousedown', h);
   }, [onClose]);
 
@@ -194,7 +194,7 @@ export default function Sidebar({
       if ((e.target as HTMLElement).closest('#stats-popup')) return;
       setShowStats(false);
     };
-    setTimeout(() => document.addEventListener('mousedown', h), 50);
+    setTimeout(() => document.addEventListener('mousedown', h), 0);
     return () => document.removeEventListener('mousedown', h);
   }, [showStats]);
 

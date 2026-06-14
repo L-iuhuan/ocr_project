@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAppState } from '../store/AppContext';
-
-const RUNNING_STATES = ['running', 'preprocessing', 'uploading', 'downloading', 'merging'];
+import { RUNNING_STATUSES } from '../constants';
 
 export default function StatusBar() {
   const { state } = useAppState();
@@ -15,7 +14,7 @@ export default function StatusBar() {
   const quotaInfos = state.quotas || [];
 
   // Derive live counts from task list (more responsive than progress events)
-  const running = tasks.filter((t: any) => RUNNING_STATES.includes(t.state)).length;
+  const running = tasks.filter((t: any) => RUNNING_STATUSES.includes(t.state)).length;
   const chunkTotal = tasks.reduce((s: number, t: any) => s + (t.chunks?.length || 0), 0);
   const chunkCompleted = tasks.reduce((s: number, t: any) => s + (t.chunks || []).filter((c: any) => c.chunkState === 'done').length, 0);
   const failed = tasks.filter((t: any) => t.state === 'failed').length;

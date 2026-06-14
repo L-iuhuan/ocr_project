@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
-import { existsSync, readFileSync } from 'fs';
-import { dirname, join, resolve } from 'path';
+import { existsSync, realpathSync, readFileSync, statSync } from 'fs';
+import { dirname, extname, join, resolve } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -103,11 +103,12 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
         cwd,
         windowsHide: true,
         env: (() => {
-          // When the MCP server itself runs via ELECTRON_RUN_AS_NODE=1,
-          // the child OCRFlow process MUST NOT inherit this flag, otherwise
-          // Electron treats "--headless" as a Node.js flag and crashes.
-          const env = { ...process.env };
-          delete env.ELECTRON_RUN_AS_NODE;
+          const safe = ['PATH', 'HOME', 'TMPDIR', 'USER', 'LANG', 'LC_ALL', 'SHELL', 'OCRFLOW_COMMAND'];
+          const env: Record<string, string> = {};
+          for (const key of safe) {
+            const val = process.env[key];
+            if (val) env[key] = val;
+          }
           return env;
         })(),
       });
@@ -127,9 +128,13 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
 
     const OCRFLOW_TIMEOUT_MS = 3_600_000; // 1 hour max for large documents
     let timedOut = false;
+    let processExited = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      try { child.kill(); } catch {}
+      try { child.kill('SIGTERM'); } catch {}
+      setTimeout(() => {
+        if (!processExited) { try { child.kill('SIGKILL'); } catch {} }
+      }, 5000);
       resolveResult({
         exitCode: 1,
         summaryText: JSON.stringify({
@@ -151,6 +156,7 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
     });
     child.on('close', code => {
       clearTimeout(timer);
+      processExited = true;
       if (timedOut) return;
       const parsed = extractJson(stdout);
       if (parsed) {
@@ -207,7 +213,19 @@ function resolvePackagedExecutable(appRoot: string): string | null {
 }
 
 function cleanPath(value: string): string {
-  return stripOuterQuotes(String(value).trim());
+  const cleaned = stripOuterQuotes(String(value).trim());
+  if (!cleaned) return '';
+  try {
+    const resolved = realpathSync(cleaned);
+    const stat = statSync(resolved);
+    if (stat.isDirectory()) return resolved;
+    const ext = extname(resolved).toLowerCase();
+    const SUPPORTED_EXTENSIONS = new Set(['.pdf','.png','.jpg','.jpeg','.jp2','.webp','.gif','.bmp','.tif','.tiff','.pptx','.ppt','.docx','.doc','.xlsx','.txt','.wps','.ofd']);
+    if (!SUPPORTED_EXTENSIONS.has(ext)) return '';
+    return resolved;
+  } catch {
+    return '';
+  }
 }
 
 function stripOuterQuotes(value: string): string {

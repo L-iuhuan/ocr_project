@@ -3,7 +3,7 @@ import { createServer } from 'net';
 import { join } from 'path';
 import { app } from 'electron';
 import axios from 'axios';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 
 export interface PythonEnv {
   pythonInstalled: boolean;
@@ -155,6 +155,11 @@ export class PythonBridge {
     signal?.throwIfAborted();
     if (!this.healthy) {
       throw new Error('本地 OCR 服务未就绪');
+    }
+
+    const stat = statSync(filePath);
+    if (stat.size > 500 * 1024 * 1024) {
+      throw new Error(`文件过大 (${(stat.size / 1024 / 1024).toFixed(1)}MB)，本地 OCR 不支持超过 500MB 的文件`);
     }
 
     const fs = await import('fs');

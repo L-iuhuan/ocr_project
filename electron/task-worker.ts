@@ -812,7 +812,7 @@ class TaskWorker {
           const pages = await subDoc.copyPages(srcDoc, indices);
           for (const page of pages) subDoc.addPage(page);
 
-          const subPath = join(getTempDir(), basename(chunk.chunkPath.replace(/\.pdf$/i, `_sub${s}.pdf`)));
+          const subPath = join(getTempDir(), basename(chunk.chunkPath.replace(/\.pdf$/i, `_${task.jobId}_sub${s}.pdf`)));
           writeFileSync(subPath, await subDoc.save());
 
           const pageStart = (chunk.pageStart || 1) + start;
@@ -966,7 +966,7 @@ class TaskWorker {
       const pages = await subDoc.copyPages(srcDoc, indices);
       for (const page of pages) subDoc.addPage(page);
 
-      const subPath = join(getTempDir(), basename(chunk.chunkPath.replace(/\.pdf$/i, `_d${s}.pdf`)));
+      const subPath = join(getTempDir(), basename(chunk.chunkPath.replace(/\.pdf$/i, `_${task.jobId}_d${s}.pdf`)));
       writeFileSync(subPath, await subDoc.save());
 
       const pageStart = (chunk.pageStart || 1) + start;
@@ -997,6 +997,7 @@ class TaskWorker {
   }
 
   private emitQuotaUpdate(): void {
+    if (BrowserWindow.getAllWindows().length === 0) return;
     try {
       const quotas = getProviderQuotas();
       BrowserWindow.getAllWindows().forEach(w => w.webContents.send('quotas-update', quotas));

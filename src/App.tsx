@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { AppProvider, useAppState } from './store/AppContext';
 import type { LogEntryWithId } from './store/AppContext';
+import { RUNNING_STATUSES, QUEUED_STATUSES } from './constants';
 import { useTheme } from './hooks/useTheme';
 import TopBar from './components/TopBar';
 import Sidebar from './components/Sidebar';
@@ -18,9 +19,6 @@ const FILTER_CHIPS: { key: TaskFilter; label: string }[] = [
   { key: 'failed', label: '失败' },
   { key: 'cancelled', label: '已取消' },
 ];
-
-const RUNNING_STATUSES = ['running', 'preprocessing', 'uploading', 'downloading', 'merging'];
-const QUEUED_STATUSES = ['pending', 'paused'];
 
 function isRunningStatus(s: string) { return RUNNING_STATUSES.includes(s); }
 function isDoneStatus(s: string) { return s === 'done'; }

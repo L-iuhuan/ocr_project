@@ -21,7 +21,7 @@ exports.default = async function (context) {
     var cp = require('child_process');
     var appBundle = path.join(context.appOutDir, context.packager.appInfo.productFilename + '.app');
     try {
-      cp.execSync('codesign --force --deep --sign - "' + appBundle + '"', { stdio: 'pipe' });
+      cp.execFileSync('codesign', ['--force', '--deep', '--sign', '-', appBundle], { stdio: 'pipe' });
       console.log('  • ad-hoc signed  app=' + appBundle);
     } catch (e) {
       console.error('  ⨯ ad-hoc sign failed:', e.message);

@@ -199,9 +199,10 @@ export function registerIpcHandlers(): void {
     return result.canceled ? '' : result.filePaths[0] || '';
   });
 
-  ipcMain.handle('open-output-dir', (_event, dirPath?: unknown) => {
+  ipcMain.handle('open-output-dir', async (_event, dirPath?: unknown) => {
     const target = typeof dirPath === 'string' && dirPath ? dirPath : loadSettings().outputDir;
-    shell.openPath(target);
+    const err = await shell.openPath(target);
+    if (err) console.error('[IPC] open-output-dir failed: ' + err);
   });
 
   ipcMain.handle('save-settings', (_e, rawSettings: unknown) => {

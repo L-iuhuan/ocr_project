@@ -1,6 +1,6 @@
 import { PDFDocument } from 'pdf-lib';
-import { readFileSync, writeFileSync } from 'fs';
-import { basename, join, extname } from 'path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { basename, join, extname, dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { FileInfo, Chunk, ProviderType, PROVIDER_LIMITS } from '../types';
 import { getTempDir } from '../state-manager';
@@ -43,6 +43,7 @@ export async function splitFileByProvider(
 const SPLIT_SIZE_LIMIT = 200 * 1024 * 1024;
 
 async function splitPDF(file: FileInfo, maxPagesPerChunk: number, jobId?: string, outputDir?: string): Promise<SplitResult> {
+  const SPLIT_SIZE_LIMIT = 200 * 1024 * 1024;
   if (file.sizeBytes > SPLIT_SIZE_LIMIT) {
     console.warn(`[Splitter] File too large for local split (${(file.sizeBytes/1024/1024).toFixed(0)}MB), treating as single chunk`);
     return {
@@ -57,6 +58,7 @@ async function splitPDF(file: FileInfo, maxPagesPerChunk: number, jobId?: string
   const chunks: Chunk[] = [];
   const jobUUID = randomUUID();
   const outDir = (jobId && outputDir) ? resolveChunksDir(jobId, outputDir) : getTempDir();
+  if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
   for (let seq = 0; seq < totalChunks; seq++) {
     const start = seq * maxPagesPerChunk;

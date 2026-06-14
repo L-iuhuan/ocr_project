@@ -49,17 +49,20 @@ function createWindow() {
 app.whenReady().then(async () => {
   const headless = parseHeadlessArgs(process.argv);
   if (headless.mode === 'help') {
+    if (process.platform === 'darwin') app.dock?.hide?.();
     console.log(headless.text);
     app.exit(0);
     return;
   }
   if (headless.mode === 'error') {
+    if (process.platform === 'darwin') app.dock?.hide?.();
     console.error(headless.message + '\n\n' + headless.text);
     app.exit(2);
     return;
   }
   if (headless.mode === 'parse') {
     isHeadlessRun = true;
+    if (process.platform === 'darwin') app.dock?.hide?.();
     const { code, summary } = await runHeadlessParse(headless.options).catch(err => ({
       code: 1,
       summary: {
