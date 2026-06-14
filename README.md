@@ -1,306 +1,293 @@
 # OCRFlow
 
-Multi-engine OCR document batch processing tool. Parse PDF, Office, and image files using MinerU Cloud, PaddleOCR Cloud, or local OCR engines.
+多引擎 OCR 文档批量处理工具。支持 PDF、Office 文档和图片的智能识别与结构化输出，可调用 MinerU Cloud、PaddleOCR Cloud 或本地 OCR 引擎。
 
-**Cross-platform** — Windows (installer + portable) and macOS (Apple Silicon).  
-**Multi-engine** — MinerU Precision/Agent, PaddleOCR-VL Cloud, local OCR services.  
-**Agent-ready** — Standard MCP tool `parse_documents` for AI agent integration.  
-**Headless CLI** — Batch OCR from the command line, ideal for automation and CI.
+**跨平台** — Windows（安装器 + 解压即用）+ macOS（Apple Silicon）。  
+**多引擎** — MinerU Precision/Agent、百度 PaddleOCR-VL Cloud、本地 OCR 服务。  
+**Agent 就绪** — 标准 MCP 工具 `parse_documents`，AI Agent 可直接调用。  
+**命令行** — 无需打开 GUI，CLI 批量 OCR，适合自动化和 CI 场景。
 
 ---
 
-## Installation
+## 安装与使用
 
 ### Windows
 
-Two options:
+| 格式 | 用法 |
+|------|------|
+| **NSIS 安装器**（`OCRFlow Setup 1.2.0.exe`） | 双击运行，选择安装路径，自动创建桌面和开始菜单快捷方式。 |
+| **解压即用**（`OCRFlow-win-1.2.0.zip`） | 解压到任意目录，双击 `OCRFlow.exe`，无需安装。 |
 
-| Format | How to use |
-|--------|------------|
-| **NSIS Installer** (`OCRFlow Setup 1.2.0.exe`) | Double-click, choose install path, done. Creates desktop + start menu shortcuts. |
-| **Portable** (`OCRFlow-win-1.2.0.zip`) | Unzip anywhere, double-click `OCRFlow.exe`. No installation required. |
+### macOS（Apple Silicon）
 
-### macOS (Apple Silicon)
+1. 下载 `OCRFlow-1.2.0-arm64-mac.zip`
+2. 解压 → 把 `OCRFlow.app` 拖到 `/Applications`
+3. 首次启动：**右键点击** App → **打开** → 对话框点**打开**
+4. 之后正常双击即可
 
-1. Download `OCRFlow-1.2.0-arm64-mac.zip`
-2. Unzip → drag `OCRFlow.app` to `/Applications`
-3. First launch: **right-click** the app → **Open** → click **Open** in the dialog
-4. Subsequent launches work with a normal double-click
+> **为什么首次要右键打开？**  
+> App 使用了 ad-hoc 签名（没有 Apple Developer 证书），macOS Gatekeeper 需要用户额外确认一次。注册 Apple Developer 之后可以做到双击即开。
 
-> **Why right-click the first time?**  
-> The app is ad-hoc signed (no Apple Developer certificate). macOS Gatekeeper requires one extra confirmation for unsigned apps.
-
-### From Source
+### 从源码构建
 
 ```bash
 git clone https://github.com/L-iuhuan/ocr_project.git
 cd ocr_project
 npm install
-npm run dev          # development mode
-npm run build        # production build
+npm run dev          # 开发模式
+npm run build        # 生产构建
 ```
 
-**Requirements**: Node.js 18+, Python 3.8+ (optional, for local OCR engine only).
+**运行要求**：Node.js 18+。Python 3.8+ 仅在需要使用本地 OCR 引擎时需要。
 
 ---
 
-## Quick Start
+## 快速上手
 
-### 1. Configure OCR providers
+### 第一步：配置 OCR 服务商
 
-Open OCRFlow, go to **Settings → Providers**. At minimum you can use **MinerU Agent mode** without any token — it works out of the box for small files (≤10MB, ≤20 pages). For larger files or better quality, configure a MinerU token or PaddleOCR token.
+打开 OCRFlow，进入**设置 → 服务商**。最简单的用法是使用 **MinerU Agent 模式**，不需要任何 Token，直接就能处理小文件（≤10MB、≤20 页）。如果需要更好的识别质量或处理大文件，可以配置 MinerU Token 或 PaddleOCR Token。
 
-### 2. Add files
+### 第二步：添加文件
 
-Drag & drop files or folders into the app, or use **File → Add files/folder** from the toolbar.
+把文件或文件夹拖入软件窗口，或者通过工具栏按钮添加。
 
-### 3. Process
+### 第三步：开始处理
 
-Click the play button to start processing. OCRFlow splits large PDFs into page-range chunks, submits each to the selected provider, polls for results, downloads outputs, and merges everything.
+点击启动按钮。OCRFlow 会把大 PDF 拆分成页段分块，依次提交给选定的服务商，等待识别结果，下载后合并输出。
 
-Supported inputs: PDF, PPTX, DOCX, XLSX, PNG, JPG, JPEG, WebP, GIF, BMP, TIFF, TXT, WPS, OFD
+支持输入格式：PDF、PPTX、DOCX、XLSX、PNG、JPG、JPEG、WebP、GIF、BMP、TIFF、TXT、WPS、OFD
 
-Output formats: Markdown, JSON, HTML, DOCX (configurable in Settings)
+输出格式：Markdown、JSON、HTML、DOCX（可在设置中多选）
 
 ---
 
-## Features
+## 核心功能
 
-### OCR Providers
+### 多引擎 OCR
 
-| Provider | Type | Description |
-|----------|------|-------------|
-| **MinerU Cloud** | Cloud API | Precision mode (token required, ≤200MB/file, ≤200 pages/chunk) or Agent mode (no token, ≤10MB/file, ≤20 pages/chunk). Supports PDF, PPTX, DOCX, XLSX, images. |
-| **PaddleOCR Cloud** | Cloud API | Baidu PaddleOCR-VL API. Supports many Chinese document formats including WPS, OFD. |
-| **Local OCR Engine** | Local | Connect to any local OCR service that provides a `/layout-parsing` POST endpoint (PaddleOCR, MinerU local, etc.). OCRFlow can also auto-start a bundled Python server if configured. |
+| 引擎 | 类型 | 说明 |
+|------|------|------|
+| **MinerU Cloud** | 云端 API | Precision 模式（需 Token，≤200MB/文件，≤200 页/块）或 Agent 模式（免 Token，≤10MB/文件，≤20 页/块）。支持 PDF、PPTX、DOCX、XLSX、图片。 |
+| **PaddleOCR Cloud** | 云端 API | 百度 PaddleOCR-VL 云 API，支持包括 WPS、OFD 在内的多种格式。 |
+| **本地 OCR 引擎** | 本地服务 | 对接任意提供 `/layout-parsing` POST 接口的本地 OCR 服务（PaddleOCR、MinerU 等均可）。OCRFlow 也可在配置好 Python 路径后自动启动内置的简易 OCR 服务。 |
 
-Provider priority is configurable — the first available provider is used, with automatic fallback if a provider fails.
+各引擎按设定优先级依次尝试，某个引擎失败时自动 fallback 到下一个。
 
-### Headless CLI
+### 命令行（CLI）
 
-Process documents from the command line without opening the GUI:
+无需打开 GUI，通过命令行完成批量 OCR：
 
 ```bash
-# Single file
+# 单文件
 OCRFlow.exe --headless parse "D:\docs\report.pdf" --out "D:\ocr-output"
 
-# Batch folder
+# 批量文件夹
 OCRFlow.exe --headless parse "D:\docs\2026" --providers mineru-cloud,paddleocr-cloud --json
 
-# Development environment
+# 开发环境
 npm run parse -- "D:\docs\report.pdf" --provider mineru-cloud --json
 ```
 
-Options:
+支持的参数：
 
-| Flag | Description |
-|------|-------------|
-| `--out <dir>` | Output directory (default: from GUI settings) |
-| `--provider <name>` | Single provider: `mineru-cloud`, `paddleocr-cloud`, `paddleocr-local` |
-| `--providers <list>` | Fallback order, comma-separated |
-| `--concurrency <n>` | Parallel tasks (1-8) |
-| `--chunk-size <n>` | Pages per chunk |
-| `--json` | Output machine-readable JSON summary |
-| `--help` | Print usage |
+| 参数 | 说明 |
+|------|------|
+| `--out <目录>` | 输出目录（默认使用 GUI 设置） |
+| `--provider <名称>` | 单个引擎：`mineru-cloud`、`paddleocr-cloud`、`paddleocr-local` |
+| `--providers <列表>` | 引擎 fallback 顺序，逗号分隔 |
+| `--concurrency <N>` | 并发数（1-8） |
+| `--chunk-size <N>` | 每块页数 |
+| `--json` | 输出机器可读 JSON 摘要 |
+| `--help` | 打印帮助信息 |
 
-### MCP Server (AI Agent Integration)
+### MCP Server（AI Agent 集成）
 
-OCRFlow exposes a standard MCP stdio server with the `parse_documents` tool. Any MCP-compatible agent (Claude Code, Claude Desktop, Cursor, OpenCode, WorkBuddy, QCode) can call it directly.
+OCRFlow 提供一个标准 MCP stdio server，包含 `parse_documents` 工具。所有兼容 MCP 协议的 AI Agent（Claude Code、Claude Desktop、Cursor、OpenCode、WorkBuddy、QCode 等）都可直接调用。
 
-**Setup**: Open OCRFlow → **Settings → Agent/MCP** → copy the auto-generated prompt or JSON config.
+**配置方式**：打开 OCRFlow → **设置 → Agent/MCP** → 复制自动生成的配置指令或 JSON。
 
-**Tool signature**:
+**工具调用格式**：
 
 ```json
 {
-  "paths": ["C:/Users/yourname/Documents/report.pdf"],
-  "outputDir": "C:/Users/yourname/Desktop/ocr-output",
+  "paths": ["C:/Users/你的用户名/Documents/report.pdf"],
+  "outputDir": "C:/Users/你的用户名/Desktop/ocr-output",
   "providers": ["mineru-cloud", "paddleocr-cloud"]
 }
 ```
 
-All parameters except `paths` are optional. Provider tokens are reused from GUI settings.
+除 `paths` 外所有参数均可选。OCR 引擎的 Token 等凭据复用 GUI 设置。
 
-### Image Handling
+**打包后无需安装 Node.js**：OCRFlow 的可执行文件自带 Electron 内嵌的 Node.js 运行时，配置中的 `ELECTRON_RUN_AS_NODE=1` 会让 MCP 客户端直接以 OCRFlow.exe 作为 Node 来运行 MCP server。
 
-OCRFlow preserves images from OCR results:
+### 图片处理
 
-- Images extracted from provider downloads are saved to `images/` under the output directory.
-- Markdown image references are rewritten to match the output structure.
-- Set `keepImages: false` in Settings to skip image collection.
-- The `images/` directory is only created when images are actually present.
+- OCR 结果中的图片会被提取并保存到输出目录下的 `images/` 文件夹。
+- Markdown 中的图片引用会自动重写，指向正确的相对路径。
+- 在设置中关闭 `keepImages` 可以跳过图片收集。
+- 没有图片时不会创建 `images/` 目录。
 
-### Workspace & Retry
+### 任务工作区与重试
 
-Each task has a dedicated workspace under `outputDir/_ocrflow_tmp/{jobId}/`:
+每个任务拥有独立的工作区：
 
-- Chunk PDFs and OCR results are stored per chunk.
-- If a chunk fails (network error, download timeout), only the failed chunk is retried.
-- Successfully completed chunks are never re-processed.
-- Missing temp files are rebuilt from the original source PDF by page range.
-- Workspaces are cleaned automatically when the task completes or is removed.
+```text
+outputDir/_ocrflow_tmp/{jobId}/
+├── manifest.json       # chunk 状态记录
+├── chunks/             # 拆分后的 chunk PDF
+└── results/            # OCR 识别结果
+```
 
-### Output Naming
+- 某个 chunk 失败时（网络错误、下载超时等），仅重试失败的分块，已完成的部分不会被重复处理。
+- 临时文件丢失时，会按页段范围从原始 PDF 重建对应分块。
+- 任务完成或被移除后，工作区自动清理。
+- 应用重启后不会误删还在重试范围内的任务工作区。
 
-File naming follows a configurable template (Settings → General):
+### 输出文件命名
 
-| Variable | Description |
-|----------|-------------|
-| `{name}` | Original filename (without extension) |
+文件名遵循可配置模板（设置 → 基本设置）：
+
+| 变量 | 含义 |
+|------|------|
+| `{name}` | 原始文件名（不含扩展名） |
 | `{date}` | `YYYY-MM-DD` |
 | `{time}` | `HH-MM-SS` |
 | `{timestamp}` | `YYYYMMDDHHMMSS` |
 
-Default: `{date}/{name}` (files grouped by date in subdirectories).
+默认模板：`{date}/{name}`（按日期分子目录存放）。
 
-### Theme & UI
+### 主题与界面
 
-- Dark / Light / Auto system theme with multiple color palettes (Lavender, Ice, Mint, Amber).
-- Custom frameless title bar on Windows; native traffic-light buttons on macOS.
-- Real-time log viewer with search and severity filtering.
-- Task cards showing per-chunk progress, provider, elapsed time, file size.
-
----
-
-## Settings Reference
-
-### Providers
-
-| Setting | Description |
-|---------|-------------|
-| MinerU Cloud → API Token | Token for Precision mode. Leave empty for Agent-only mode. |
-| MinerU Cloud → Base URL | API endpoint (default: `https://mineru.net/api/v4`). |
-| PaddleOCR Cloud → Access Token | Token from PaddleOCR console. Required. |
-| Local OCR → Enabled | Enable local OCR engine. |
-| Local OCR → Port | Port of the local OCR service (default: 51987). If a service is already running on this port, OCRFlow connects to it. |
-| Local OCR → Python Path | Python executable path (default: `python3` on macOS, `python` on Windows). Used to auto-start a built-in server if no external service is detected. |
-
-### General
-
-| Setting | Description |
-|---------|-------------|
-| Output formats | Markdown / JSON / HTML / DOCX (multi-select). |
-| Output directory | Where processed files are written. |
-| File naming template | See Output Naming section above. |
-| Concurrency | Number of parallel tasks (1-8). Default: 2. |
-| Pages per chunk | PDF split granularity. Default: 20. |
-| Auto-start queue | Start processing immediately after adding files. |
-
-### Image & Temp
-
-| Setting | Description |
-|---------|-------------|
-| Keep images | Extract and save images from OCR results (default: on). |
-| Image output directory | Custom path for images (default: `{outputDir}/images`). |
-| Auto-extract ZIP | Unpack provider ZIP results automatically. |
-| Delete temp after done | Clean up temporary chunk files after successful processing. Partial failures keep temp data for retry. |
+- 深色 / 浅色 / 跟随系统三种主题模式，搭配多套配色方案（薰衣草紫、冰蓝、薄荷绿、琥珀金）。
+- Windows 上使用定制无框标题栏，macOS 上保留原生红绿灯。
+- 实时日志面板，支持关键词搜索和级别筛选。
+- 任务卡片展示每个分块的进度、服务商、耗时、文件大小。
 
 ---
 
-## Building from Source
+## 设置项参考
 
-### Prerequisites
+### 服务商
+
+| 设置项 | 说明 |
+|--------|------|
+| MinerU Cloud → API Token | Precision 模式 Token。留空仅使用 Agent 模式。 |
+| MinerU Cloud → 接口地址 | API 地址（默认 `https://mineru.net/api/v4`）。 |
+| PaddleOCR Cloud → Access Token | PaddleOCR 控制台获取的 Token。必填。 |
+| 本地 OCR → 启用 | 启用本地 OCR 引擎。 |
+| 本地 OCR → 服务端口 | 本地 OCR 服务监听端口（默认 51987）。如果该端口已有运行中的服务，OCRFlow 会直接连接。 |
+| 本地 OCR → Python 路径 | Python 可执行文件路径（macOS 默认 `python3`，Windows 默认 `python`）。外部服务不可用时，会尝试用此路径启动内置简易 OCR 服务。 |
+
+### 基本设置
+
+| 设置项 | 说明 |
+|--------|------|
+| 输出格式 | Markdown / JSON / HTML / DOCX（可多选）。 |
+| 输出目录 | 处理结果的保存路径。 |
+| 文件命名模板 | 见上方输出文件命名。 |
+| 并发数 | 同时处理的任务数（1-8），默认 2。 |
+| 每块页数 | PDF 分块粒度，默认 20 页。 |
+| 自动开始 | 添加文件后立即开始处理。 |
+
+### 文件处理
+
+| 设置项 | 说明 |
+|--------|------|
+| 保留图片 | 从 OCR 结果中提取并保存图片（默认开启）。 |
+| 图片输出目录 | 自定义图片存放路径（默认跟随输出目录的 `images/`）。 |
+| 自动解压 ZIP | 自动解压服务商返回的 ZIP 包。 |
+| 处理完删除临时文件 | 成功处理后清理临时分块文件。部分失败时会保留临时数据以供重试。 |
+
+---
+
+## 构建
+
+### 环境要求
 
 - Node.js 18+
 - npm
-- (optional) Python 3.8+ with `paddleocr[all]` for local OCR
+- Python 3.8+（可选，仅本地 OCR 需要 `paddleocr[all]`）
 
-### Development
+### 开发运行
 
 ```bash
 npm install
-npm run dev          # Vite dev server + Electron
+npm run dev          # Vite 开发服务器 + Electron
 ```
 
-### Production Build
+### 生产构建
 
 ```bash
-npm run build        # Windows: NSIS installer + win-unpacked
+npm run build        # Windows: NSIS 安装器 + win-unpacked 目录
 ```
 
-The build outputs to `release/`:
-- `OCRFlow Setup 1.2.0.exe` — NSIS installer
-- `win-unpacked/OCRFlow.exe` — portable, no installation
+构建产物在 `release/` 目录：
+- `OCRFlow Setup 1.2.0.exe` — NSIS 安装器
+- `win-unpacked/OCRFlow.exe` — 解压即用，无需安装
 
-### macOS Build (CI)
-
-macOS builds run on GitHub Actions. Artifacts are available from the Actions tab or the Releases page.
+macOS 构建通过 GitHub Actions 自动完成，产物可在 Actions 页面或 Releases 页面下载。
 
 ---
 
-## Project Structure
+## 项目结构
 
 ```text
-electron/              # Electron main process
-├── main.ts            # App lifecycle, window creation
-├── preload.ts         # contextBridge to renderer
-├── ipc-handlers.ts    # IPC handlers (settings, file ops, providers)
-├── task-worker.ts     # OCR task queue, chunk processing, retry logic
-├── state-manager.ts   # JSON persistence (tasks, settings, counters)
-├── python-bridge.ts   # Python subprocess management
-├── headless-args.ts   # CLI argument parser
-├── headless-runner.ts # CLI batch OCR orchestrator
-├── mcp-server.ts      # MCP stdio server
-├── types.ts           # Shared types
-├── pipeline/          # Processing pipeline
-│   ├── scanner.ts     # File discovery + dedup
-│   ├── preprocessor.ts# Page counting
-│   ├── splitter.ts    # PDF chunking
-│   ├── merger.ts      # Output merge + HTML/DOCX generation
-│   ├── validator.ts   # Pre-merge validation
-│   └── task-workspace.ts # Manifest-based workspace tracking
-└── providers/         # OCR provider implementations
-    ├── i-provider.ts
+electron/                    # Electron 主进程
+├── main.ts                  # 应用生命周期、窗口创建
+├── preload.ts               # 渲染进程 contextBridge
+├── ipc-handlers.ts          # IPC 处理（设置、文件、服务商）
+├── task-worker.ts           # OCR 任务队列、分块处理、重试
+├── state-manager.ts         # JSON 持久化（任务、设置、计数器）
+├── python-bridge.ts         # Python 子进程管理
+├── headless-args.ts         # CLI 参数解析
+├── headless-runner.ts       # CLI 批量 OCR 编排
+├── mcp-server.ts            # MCP stdio server
+├── pipeline/                # 处理管线
+│   ├── scanner.ts           # 文件发现与去重
+│   ├── preprocessor.ts      # 页数分析
+│   ├── splitter.ts          # PDF 拆分
+│   ├── merger.ts            # 结果合并、HTML/DOCX 生成
+│   ├── validator.ts         # 合并前校验
+│   └── task-workspace.ts    # 任务工作区 manifest 管理
+└── providers/               # OCR 服务商实现
     ├── mineru-cloud.ts
     ├── paddleocr-cloud.ts
     ├── paddleocr-local.ts
     ├── provider-registry.ts
     └── provider-router.ts
 
-src/                   # React renderer
-├── main.tsx           # Entry point
-├── App.tsx            # Root component
-├── index.css          # Theme + layout styles
-├── store/AppContext.tsx   # Single useReducer store
-├── types/index.ts     # UI types + ElectronAPI
-├── hooks/useTheme.ts  # Theme switching
-└── components/        # UI components
-    ├── TopBar.tsx     # Custom title bar
-    ├── Sidebar.tsx    # Task list sidebar
-    ├── TaskCard.tsx   # Individual task display
-    ├── TaskList.tsx   # Task list container
-    ├── SettingsView.tsx
-    ├── ProviderSettings.tsx
-    ├── GeneralSettings.tsx
-    ├── LocalInferenceSettings.tsx
-    ├── AgentMcpSettings.tsx
-    ├── StatusBar.tsx
-    └── AboutView.tsx
+src/                         # React 渲染进程
+├── main.tsx                 # 入口
+├── App.tsx                  # 根组件
+├── index.css                # 主题与布局样式
+├── store/AppContext.tsx     # 全局状态
+├── types/index.ts           # 类型定义
+├── hooks/useTheme.ts        # 主题切换
+└── components/              # UI 组件
 
-python/                # Local OCR Python server
-└── local_ocr_server.py
-
+python/                      # 本地 OCR Python 服务
 scripts/
-└── afterPack.js       # Build post-processing (icon + codesign)
+└── afterPack.js             # 构建后处理（图标嵌入 + 签名）
 ```
 
 ---
 
-## MCP Client Configuration
+## MCP 客户端配置
 
 ### Claude Code / Claude Desktop
 
-Copy the auto-generated config from **Settings → Agent/MCP** and paste into `.mcp.json` or `claude_desktop_config.json`.
+在 OCRFlow 的 **设置 → Agent/MCP** 中复制自动生成的配置，粘贴到 `.mcp.json` 或 `claude_desktop_config.json`。
 
 ### Cursor
 
-Copy the config into `.cursor/mcp.json`.
+将配置粘贴到 `.cursor/mcp.json`。
 
 ### OpenCode / WorkBuddy / QCode
 
-These tools support the standard `mcpServers` stdio format. Paste the auto-generated config into your MCP settings.
+这些工具支持标准 `mcpServers` stdio 格式，直接粘贴即可。
 
-### Manual Configuration (development)
+### 手动配置（开发环境）
 
 ```json
 {
@@ -315,56 +302,55 @@ These tools support the standard `mcpServers` stdio format. Paste the auto-gener
 
 ---
 
-## Troubleshooting
+## 常见问题
 
-### macOS: "OCRFlow is damaged and can't be opened"
+### macOS 提示"OCRFlow 已损坏，无法打开"
 
-This is macOS Gatekeeper blocking an unsigned app. Right-click the app → **Open** → click **Open**.
+这是 macOS Gatekeeper 拦截未签名 App 的表现。右键点击 App → **打开** → **打开** 即可。
 
-### MinerU: files always use Agent mode despite having a token
+### MinerU 明明填了 Token 却总是走 Agent 模式
 
-1. Go to Settings → Providers → MinerU Cloud
-2. Enter your token and click **Test Connection**
-3. If the test says the token is valid, click **Save Settings**
-4. Re-add your files
+1. 进入设置 → 服务商 → MinerU Cloud
+2. 填入 Token 后点击**测试连接**
+3. 测试通过后点击**保存设置**
+4. 重新添加文件
 
-### Local OCR: "PaddleOCR not installed"
+### 本地 OCR 提示"PaddleOCR 未安装"
 
-Your local OCR service does not have PaddleOCR installed. Install it with:
+本地 OCR 服务没有安装 PaddleOCR。执行：
 
 ```bash
 pip install paddleocr[all]
 ```
 
-Or, if you have an external OCR service running on a specific port, configure that port in Settings → Local OCR Engine → Port.
+或者，如果你有在某个端口上运行的外部 OCR 服务，直接在设置里配置对应端口即可，OCRFlow 会自动连接。
 
-### Large PDF fails to process
+### 大 PDF 处理失败
 
-For PDFs >200MB, local splitting is disabled to prevent memory issues. These files are submitted as a single chunk. If the provider also rejects them, try reducing the file size or using MinerU Precision mode.
+超过 200MB 的 PDF，本地拆分会被禁用以避免内存问题，文件会作为一个整体提交。如果服务商也拒绝处理，建议缩减 PDF 大小或使用 MinerU Precision 模式。
 
-### MCP server can't find OCRFlow executable
+### MCP 服务器找不到 OCRFlow 可执行文件
 
-Set the environment variable `OCRFLOW_COMMAND` to the full path of the OCRFlow executable:
+设置环境变量 `OCRFLOW_COMMAND` 为可执行文件的完整路径：
 
 ```bash
 # Windows
-OCRFLOW_COMMAND="D:\apps\OCRFlow\OCRFlow.exe"
-
+set OCRFLOW_COMMAND=D:\apps\OCRFlow\OCRFlow.exe
 # macOS
-OCRFLOW_COMMAND="/Applications/OCRFlow.app/Contents/MacOS/OCRFlow"
+export OCRFLOW_COMMAND=/Applications/OCRFlow.app/Contents/MacOS/OCRFlow
 ```
 
-### Network errors cause chunk failures without retry
+### 分块因网络问题失败
 
-Transient network errors (TLS disconnect, timeout, connection reset) are detected and do not trigger automatic page-size degradation. Simply click **Retry** on the failed task — only failed chunks are retried.
+网络/TLS/下载类错误会被自动检测，不会触发自动降级拆分。直接在失败任务上点**重试**即可，只会重试失败的分块，已完成的分块不会重复处理。
 
 ---
 
-## License
+## 许可证
 
 MIT License — LIU HUAN
 
-## Links
+## 链接
 
-- GitHub: https://github.com/L-iuhuan/ocr_project
-- Releases: https://github.com/L-iuhuan/ocr_project/releases
+- 代码仓库：https://github.com/L-iuhuan/ocr_project
+- 下载页面：https://github.com/L-iuhuan/ocr_project/releases
