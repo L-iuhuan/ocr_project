@@ -3,6 +3,11 @@ dist/
 dist-electron/
 release/
 *.exe
+*.zip
+*.dmg
+*.blockmap
+latest.yml
+builder-debug.yml
 .claude/
 .vscode/
 .idea/
