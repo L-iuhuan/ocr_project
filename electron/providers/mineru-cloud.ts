@@ -20,6 +20,22 @@ export function setMinerUTlsRejectUnauthorized(v: boolean): void {
   tlsRejectUnauthorized = v;
 }
 
+function summarizePrecisionResponse(data: any): string {
+  const root = data || {};
+  const body = root.data || {};
+  const result = Array.isArray(body.extract_result) ? body.extract_result[0] : undefined;
+  const summary = {
+    code: root.code,
+    msg: root.msg,
+    batch_id: body.batch_id,
+    state: result?.state,
+    hasUploadUrl: Array.isArray(body.file_urls) && body.file_urls.length > 0,
+    hasDownloadUrl: Boolean(result?.full_zip_url || result?.zip_url || result?.download_url || result?.result_url),
+    err_msg: result?.err_msg || undefined,
+  };
+  return JSON.stringify(summary);
+}
+
 async function downloadFile(url: string, destPath: string, signal?: AbortSignal): Promise<void> {
   const parsedUrl = new URL(url);
   const options: https.RequestOptions = {
@@ -110,6 +126,10 @@ export class MinerUCloudProvider implements IProvider {
     return this.limits.supportsFormats.includes(fileType as never);
   }
 
+  isQuotaExhausted(): boolean {
+    return this.precisionQuotaExhausted;
+  }
+
   getChunkSize(): number {
     if (this.token && !this.precisionQuotaExhausted) return 200;
     return 20;
@@ -176,7 +196,7 @@ export class MinerUCloudProvider implements IProvider {
       throw new Error('MinerU Precision upload request failed: ' + e.message + ' (HTTP ' + (e.response?.status || '?') + ')');
     }
 
-    console.log('[MinerU:Precision] Full response body: ' + JSON.stringify(batchResp.data));
+    console.log('[MinerU:Precision] Upload URL response: ' + summarizePrecisionResponse(batchResp.data));
 
     var data = batchResp.data?.data;
     if (!data) {
@@ -332,7 +352,7 @@ export class MinerUCloudProvider implements IProvider {
     if (this.token && !this.precisionQuotaExhausted) {
       try {
         var resp = await this.precisionClient.get('/extract-results/batch/' + taskId, signal ? { signal } : {});
-        console.log('[MinerU:Poll:Precision] batch_id=' + taskId + ' response: ' + JSON.stringify(resp.data));
+        console.log('[MinerU:Poll:Precision] batch_id=' + taskId + ' response: ' + summarizePrecisionResponse(resp.data));
 
         var results = resp.data?.data?.extract_result;
         if (Array.isArray(results) && results.length > 0) {
@@ -399,7 +419,7 @@ export class MinerUCloudProvider implements IProvider {
       try {
         var _resp = await this.precisionClient.get('/extract-results/batch/' + taskId, signal ? { signal } : {});
         var respBody = _resp.data;
-        console.log('[MinerU:Download:Precision] batch_id=' + taskId + ' response: ' + JSON.stringify(respBody));
+        console.log('[MinerU:Download:Precision] batch_id=' + taskId + ' response: ' + summarizePrecisionResponse(respBody));
         var _results = respBody?.data;
         var resultList = _results?.extract_result;
         if (Array.isArray(resultList) && resultList.length > 0) {
@@ -408,7 +428,7 @@ export class MinerUCloudProvider implements IProvider {
             || _r.fullZipUrl || _r.zipUrl || _r.downloadUrl;
           if (zipUrl) {
             var destPath = join(destDir, taskId + '.zip');
-            console.log('[MinerU:Download] Fetching zip from ' + zipUrl.substring(0, 80) + '...');
+            console.log('[MinerU:Download] Fetching zip: host=' + new URL(zipUrl).hostname);
             await downloadFile(zipUrl, destPath, signal);
             return { rawPath: destPath };
           }

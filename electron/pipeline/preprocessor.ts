@@ -56,14 +56,20 @@ function estimatePagesBySize(bytes: number, fileType: string): number {
 async function analyzePDF(info: FileInfo): Promise<FileInfo> {
   if (!existsSync(info.path)) return { ...info, pageCount: 0 };
 
-  // ---- Tier 1: pdf-lib (full parse) ----
-  try {
-    const buffer = readFileSync(info.path);
-    const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-    const count = doc.getPageCount();
-    if (count > 0) return { ...info, pageCount: count };
-  } catch (err: any) {
-    console.warn(`[Preprocessor] pdf-lib failed for "${info.path}": ${err.message || err}`);
+  const LARGE_FILE_THRESHOLD = 200 * 1024 * 1024;
+
+  // ---- Tier 1: pdf-lib (full parse, only for files under threshold) ----
+  if (info.sizeBytes <= LARGE_FILE_THRESHOLD) {
+    try {
+      const buffer = readFileSync(info.path);
+      const doc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+      const count = doc.getPageCount();
+      if (count > 0) return { ...info, pageCount: count };
+    } catch (err: any) {
+      console.warn(`[Preprocessor] pdf-lib failed for "${info.path}": ${err.message || err}`);
+    }
+  } else {
+    console.log(`[Preprocessor] File too large for pdf-lib parse (${(info.sizeBytes/1024/1024).toFixed(0)}MB), using trailer estimation`);
   }
 
   // ---- Tier 2: trailer regex (fast, reads only last 4KB) ----

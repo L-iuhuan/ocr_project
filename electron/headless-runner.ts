@@ -190,7 +190,7 @@ async function getProviderStatuses(
     statuses.push({
       type: provider.type as ProviderType,
       available: health.available,
-      quotaExhausted: false,
+      quotaExhausted: provider.type === 'mineru-cloud' && typeof (provider as any).isQuotaExhausted === 'function' ? (provider as any).isQuotaExhausted() : false,
       lastChecked: new Date().toISOString(),
       lastError: health.message,
     });

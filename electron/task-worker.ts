@@ -146,6 +146,32 @@ class TaskWorker {
     });
   }
 
+  async shutdown(): Promise<void> {
+    this.paused = true;
+    for (const [jobId, ctrl] of this.abortControllers) {
+      try { ctrl.abort(); } catch {}
+      const task = this.queue.find(t => t.jobId === jobId);
+      if (task && RUNNING_STATES.includes(task.state)) {
+        task.state = 'pending';
+        task.progress = Math.min(task.progress || 0, 99);
+        task.chunks.forEach(chunk => {
+          if (RUNNING_STATES.includes(chunk.chunkState)) {
+            chunk.chunkState = 'pending';
+            chunk.progress = 0;
+          }
+        });
+      }
+    }
+    this.abortControllers.clear();
+    // Wait up to 5s for any in-flight async work to settle.
+    await new Promise(r => setTimeout(r, 1000));
+    this.log('所有运行中任务已取消，状态已保存', 'warn');
+    if (this.persistTasks) {
+      const { saveTasks } = require('./state-manager');
+      saveTasks(this.queue, []);
+    }
+  }
+
   pause(): void {
     this.paused = true;
     this.log('队列已暂停', 'warn');

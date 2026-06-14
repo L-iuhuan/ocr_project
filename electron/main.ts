@@ -3,6 +3,7 @@ import { join } from 'path';
 import { registerIpcHandlers } from './ipc-handlers';
 import { parseHeadlessArgs } from './headless-args';
 import { runHeadlessParse, stopHeadlessServices } from './headless-runner';
+import { taskWorker } from './task-worker';
 import { pythonBridge } from './python-bridge';
 
 let mainWindow: BrowserWindow | null = null;
@@ -104,6 +105,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  taskWorker.shutdown().catch(e => console.error('[Main] taskWorker shutdown failed:', e.message || e));
   pythonBridge.stop().catch(e => console.error('[Main] pythonBridge.stop failed:', e.message || e));
 });
 

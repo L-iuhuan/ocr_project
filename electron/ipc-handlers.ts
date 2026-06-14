@@ -114,7 +114,7 @@ export function registerIpcHandlers(): void {
       const paddleocrCloudHealth = await paddleocrCloud.healthCheck();
 
       const providerStatus: ProviderStatus[] = [
-        { type: 'mineru-cloud', available: mineruHealth.available, quotaExhausted: false, lastChecked: new Date().toISOString(), lastError: mineruHealth.message },
+        { type: 'mineru-cloud', available: mineruHealth.available, quotaExhausted: mineruCloud.isQuotaExhausted(), lastChecked: new Date().toISOString(), lastError: mineruHealth.message },
         { type: 'paddleocr-cloud', available: paddleocrCloudHealth.available, quotaExhausted: false, lastChecked: new Date().toISOString(), lastError: paddleocrCloudHealth.message },
         { type: 'paddleocr-local', available: localHealth.available, quotaExhausted: false, lastChecked: new Date().toISOString(), lastError: localHealth.message }
       ];
@@ -281,7 +281,7 @@ export function registerIpcHandlers(): void {
     try { baiduHealth = await paddleocrCloud.healthCheck(); } catch (e: any) { baiduHealth = { available: false, message: '异常: ' + (e.message || '') }; }
     try { localHealth = await paddleocrLocal.healthCheck(); } catch (e: any) { localHealth = { available: false, message: '异常: ' + (e.message || '') }; }
     return [
-      { type: 'mineru-cloud', available: mineruHealth.available, quotaExhausted: false, lastChecked: new Date().toISOString(), lastError: mineruHealth.message },
+      { type: 'mineru-cloud', available: mineruHealth.available, quotaExhausted: mineruCloud.isQuotaExhausted(), lastChecked: new Date().toISOString(), lastError: mineruHealth.message },
       { type: 'paddleocr-cloud', available: baiduHealth.available, quotaExhausted: false, lastChecked: new Date().toISOString(), lastError: baiduHealth.message },
       { type: 'paddleocr-local', available: localHealth.available, quotaExhausted: false, lastChecked: new Date().toISOString(), lastError: localHealth.message }
     ];
