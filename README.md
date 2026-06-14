@@ -58,7 +58,7 @@ npm run build        # 生产构建（Windows）
 | MinerU Agent 单文件 | ≤10MB |
 | PaddleOCR Cloud 单文件 | ≤50MB |
 | 本地 OCR 单文件 | ≤500MB（超过会拒绝） |
-| 本地 PDF 拆分阈值 | ≤200MB（超过不拆分，整文件提交） |
+| PDF 本地拆分阈值 | ≤500MB（超过会直接拒绝，提示缩减文件大小） |
 | Preprocessor 全量解析 | ≤200MB（超过用 trailer 估算页数，不读取全文） |
 
 ### 文件类型校验
@@ -89,7 +89,7 @@ PDF 和图片文件会校验文件头魔数（magic bytes），扩展名与实�
   ↓
 4. 拆分（Splitter）
   - PDF 按页数拆分成多个 chunk（默认 20 页/块，可调）
-  - 超大 PDF（>200MB）不拆分，整文件提交
+  - 超大 PDF（>500MB）无法处理，需先缩减文件大小
   - 图片直接作为一个 chunk
   ↓
 5. 提交处理（TaskWorker）
@@ -407,7 +407,7 @@ pip install paddleocr[all]
 
 ### 大 PDF 处理失败
 
-超过 200MB 的 PDF 本地拆分会被禁用。使用 MinerU Precision 模式（≤200MB/文件）或缩减文件大小。
+超过 500MB 的 PDF 无法处理，会被直接拒绝。请先用其他工具缩减文件大小后再试。
 
 ### MCP 找不到 OCRFlow
 
