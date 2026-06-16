@@ -23,7 +23,7 @@ type WorkerOptions = { persistTasks?: boolean; settingsProvider?: () => AppSetti
 const TERMINAL_STATES = ['done', 'failed', 'cancelled'];
 const RUNNING_STATES = ['preprocessing', 'uploading', 'running', 'downloading', 'merging'];
 const RETRYABLE_CHUNK_STATES = ['pending', 'failed'];
-const MAX_CONSECUTIVE_FAILS_BEFORE_FALLBACK = 2;
+const MAX_CONSECUTIVE_FAILS_BEFORE_FALLBACK = 1;
 
 /** Detect image format from magic bytes. Returns extension with dot, or empty string. */
 function detectImageFormat(buf: Buffer): string {
