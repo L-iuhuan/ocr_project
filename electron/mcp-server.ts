@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { existsSync, realpathSync, readFileSync, statSync } from 'fs';
+import { existsSync, mkdirSync, realpathSync, readFileSync, statSync } from 'fs';
 import { dirname, extname, join, resolve } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -86,7 +86,7 @@ function normalizeInput(input: ParseInput): { value: ParseInput } | { error: str
     value: {
       ...input,
       paths,
-      outputDir: input.outputDir ? cleanPath(input.outputDir) : undefined,
+      outputDir: input.outputDir ? resolveOutputDir(input.outputDir) : undefined,
     },
   };
 }
@@ -235,6 +235,14 @@ function cleanPath(value: string): string {
   } catch {
     return '';
   }
+}
+
+function resolveOutputDir(value: string): string {
+  const cleaned = stripOuterQuotes(String(value).trim());
+  if (!cleaned) return '';
+  const resolved = resolve(cleaned);
+  try { if (!existsSync(resolved)) mkdirSync(resolved, { recursive: true }); } catch {}
+  return resolved;
 }
 
 function stripOuterQuotes(value: string): string {
