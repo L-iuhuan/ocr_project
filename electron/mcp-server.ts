@@ -43,15 +43,9 @@ async function main(): Promise<void> {
       description: 'Batch parse local PDF/Office/image files or folders using OCRFlow GUI settings. Writes Markdown outputs to disk and returns a JSON summary.',
       inputSchema,
     },
-    async (input: any, extra: any) => {
+    async (input: any) => {
       const normalized = normalizeInput(input as ParseInput);
       if ('error' in normalized) return toolError(normalized.error, { ok: false, error: normalized.error });
-
-      const sendLog = (message: string, level: 'notice' | 'warning' | 'error' = 'notice') => {
-        if (extra?.sendLoggingMessage) {
-          extra.sendLoggingMessage({ level, data: message }).catch(() => {});
-        }
-      };
 
       // Chain sequential calls without rejecting. Each call waits for the
       // previous one to finish, so multiple parse_documents invocations are
@@ -61,10 +55,10 @@ async function main(): Promise<void> {
       chain = new Promise<void>(r => { release = r; });
       await previous;
 
-      sendLog('OCRFlow 开始处理 ' + normalized.value.paths.length + ' 个路径');
+      process.stderr.write('[ocrflow] 开始处理 ' + normalized.value.paths.length + ' 个路径\n');
 
       try {
-        const result = await runOcrflowCli(normalized.value, sendLog);
+        const result = await runOcrflowCli(normalized.value);
         const structured = safeSummary(result.summaryText) || { ok: result.exitCode === 0, raw: result.summaryText };
         const isError = result.exitCode !== 0 || (typeof structured === 'object' && structured !== null && (structured as any).ok === false);
         return {
@@ -99,9 +93,7 @@ function normalizeInput(input: ParseInput): { value: ParseInput } | { error: str
   };
 }
 
-type LogFn = (message: string, level?: 'notice' | 'warning' | 'error') => void;
-
-function runOcrflowCli(input: ParseInput, sendLog?: LogFn): Promise<{ exitCode: number; summaryText: string }> {
+function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryText: string }> {
   const { command, baseArgs, cwd } = resolveOcrflowCommand();
   const args = [...baseArgs, ...input.paths];
 
@@ -144,21 +136,17 @@ function runOcrflowCli(input: ParseInput, sendLog?: LogFn): Promise<{ exitCode: 
 
     child.stdout.on('data', data => { stdout = appendCapped(stdout, data.toString()); });
     child.stderr.on('data', data => { stderr = appendCapped(stderr, data.toString()); });
-    if (sendLog) {
-      let stderrLineBuf = '';
-      child.stderr.on('data', (data: Buffer) => {
-        stderrLineBuf += data.toString();
-        const lines = stderrLineBuf.split('\n');
-        stderrLineBuf = lines.pop() || '';
-        for (const line of lines) {
-          const t = line.trim();
-          if (!t) continue;
-          if (/ERRO|ERROR|失败/.test(t)) sendLog(t, 'error');
-          else if (/WARN|警告/.test(t)) sendLog(t, 'warning');
-          else sendLog(t, 'notice');
-        }
-      });
-    }
+    let stderrLineBuf = '';
+    child.stderr.on('data', (data: Buffer) => {
+      stderrLineBuf += data.toString();
+      const lines = stderrLineBuf.split('\n');
+      stderrLineBuf = lines.pop() || '';
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t) continue;
+        process.stderr.write('[ocrflow] ' + t + '\n');
+      }
+    });
 
     const OCRFLOW_TIMEOUT_MS = 3_600_000; // 1 hour max for large documents
     let timedOut = false;
