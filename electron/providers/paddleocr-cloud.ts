@@ -158,9 +158,12 @@ export class PaddleOCRCloudProvider implements IProvider {
             markdown += res.markdown.text + '\n\n---\n\n';
           }
 
-          // Extract images
-          if (res.markdown?.images) {
+          // Extract images from both markdown.images and outputImages
+          if (res.markdown?.images && typeof res.markdown.images === 'object') {
             Object.assign(images, res.markdown.images);
+          }
+          if (res.outputImages && typeof res.outputImages === 'object') {
+            Object.assign(images, res.outputImages);
           }
 
           // Save JSON

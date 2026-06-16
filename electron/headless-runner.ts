@@ -140,7 +140,12 @@ function applyOverrides(settings: AppSettings, options: HeadlessParseOptions): A
     },
     outputFormats: ['md'],
   };
-  if (options.outputDir) next.outputDir = options.outputDir;
+  if (options.outputDir) {
+    next.outputDir = options.outputDir;
+    // Reset image output dir to follow the overridden output directory.
+    // Otherwise images are written to the saved (old) imageOutputDir path.
+    next.imageOutputDir = '';
+  }
   if (options.concurrency) next.concurrency = Math.max(1, Math.min(8, Math.round(options.concurrency)));
   if (options.chunkSize) next.chunkSize = Math.max(1, Math.round(options.chunkSize));
   if (options.providers && options.providers.length > 0) {
