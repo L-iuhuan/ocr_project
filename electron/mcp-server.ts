@@ -33,10 +33,12 @@ const APP_VERSION: string = (() => {
 
 let chain = Promise.resolve();
 
-async function main(): Promise<void> {
-  const server = new McpServer({ name: 'ocrflow', version: APP_VERSION });
+let srv: McpServer | null = null;
 
-  server.registerTool(
+async function main(): Promise<void> {
+  srv = new McpServer({ name: 'ocrflow', version: APP_VERSION });
+
+  srv.registerTool(
     'parse_documents',
     {
       title: 'Parse documents with OCRFlow',
@@ -55,10 +57,13 @@ async function main(): Promise<void> {
       chain = new Promise<void>(r => { release = r; });
       await previous;
 
-      process.stderr.write('[ocrflow] 开始处理 ' + normalized.value.paths.length + ' 个路径\n');
+      const log = (msg: string, level: 'notice' | 'warning' | 'error' = 'notice') => {
+        srv?.sendLoggingMessage({ level, data: msg }).catch(() => {});
+      };
+      log('开始处理 ' + normalized.value.paths.length + ' 个路径');
 
       try {
-        const result = await runOcrflowCli(normalized.value);
+        const result = await runOcrflowCli(normalized.value, log);
         const structured = safeSummary(result.summaryText) || { ok: result.exitCode === 0, raw: result.summaryText };
         const isError = result.exitCode !== 0 || (typeof structured === 'object' && structured !== null && (structured as any).ok === false);
         return {
@@ -75,7 +80,7 @@ async function main(): Promise<void> {
     },
   );
 
-  await server.connect(new StdioServerTransport());
+  await srv.connect(new StdioServerTransport());
 }
 
 function normalizeInput(input: ParseInput): { value: ParseInput } | { error: string } {
@@ -93,7 +98,9 @@ function normalizeInput(input: ParseInput): { value: ParseInput } | { error: str
   };
 }
 
-function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryText: string }> {
+type LogFn = (message: string, level?: 'notice' | 'warning' | 'error') => void;
+
+function runOcrflowCli(input: ParseInput, log?: LogFn): Promise<{ exitCode: number; summaryText: string }> {
   const { command, baseArgs, cwd } = resolveOcrflowCommand();
   const args = [...baseArgs, ...input.paths];
 
@@ -138,17 +145,21 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
 
     child.stdout.on('data', data => { stdout = appendCapped(stdout, data.toString()); });
     child.stderr.on('data', data => { stderr = appendCapped(stderr, data.toString()); });
-    let stderrLineBuf = '';
-    child.stderr.on('data', (data: Buffer) => {
-      stderrLineBuf += data.toString();
-      const lines = stderrLineBuf.split('\n');
-      stderrLineBuf = lines.pop() || '';
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t) continue;
-        process.stderr.write('[ocrflow] ' + t + '\n');
-      }
-    });
+    if (log) {
+      let stderrLineBuf = '';
+      child.stderr.on('data', (data: Buffer) => {
+        stderrLineBuf += data.toString();
+        const lines = stderrLineBuf.split('\n');
+        stderrLineBuf = lines.pop() || '';
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t) continue;
+          if (/ERRO|ERROR|失败|错误/.test(t)) log(t, 'error');
+          else if (/WARN|警告/.test(t)) log(t, 'warning');
+          else log(t, 'notice');
+        }
+      });
+    }
 
     const OCRFLOW_TIMEOUT_MS = 3_600_000; // 1 hour max for large documents
     let timedOut = false;
