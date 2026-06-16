@@ -107,9 +107,13 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  taskWorker.shutdown().catch(e => console.error('[Main] taskWorker shutdown failed:', e.message || e));
-  pythonBridge.stop().catch(e => console.error('[Main] pythonBridge.stop failed:', e.message || e));
+app.on('before-quit', (event) => {
+  // Prevent immediate exit so cleanup Promises have time to settle.
+  event.preventDefault();
+  Promise.allSettled([
+    taskWorker.shutdown().catch(e => console.error('[Main] taskWorker shutdown failed:', e.message || e)),
+    pythonBridge.stop().catch(e => console.error('[Main] pythonBridge.stop failed:', e.message || e)),
+  ]).finally(() => app.exit());
 });
 
 app.on('activate', () => {

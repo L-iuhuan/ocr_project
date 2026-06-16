@@ -64,6 +64,9 @@ async function main(): Promise<void> {
           structuredContent: structured as Record<string, unknown>,
           content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],
         };
+      } catch (err: any) {
+        const msg = err?.message || String(err);
+        return toolError(msg, { ok: false, error: msg });
       } finally {
         release!();
       }
@@ -109,7 +112,7 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
         cwd,
         windowsHide: true,
         env: (() => {
-          const safe = ['PATH', 'HOME', 'TMPDIR', 'USER', 'LANG', 'LC_ALL', 'SHELL', 'OCRFLOW_COMMAND'];
+          const safe = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'USER', 'LANG', 'LC_ALL', 'SHELL', 'SystemRoot', 'OCRFLOW_COMMAND'];
           const env: Record<string, string> = {};
           for (const key of safe) {
             const val = process.env[key];
@@ -252,7 +255,7 @@ function safeSummary(text: string): unknown | null {
 }
 
 function extractJson(output: string): unknown | null {
-  const text = output.trim();
+  const text = output.replace(/^\[truncated\]\n?/, '').trim();
   if (!text) return null;
   try { return JSON.parse(text); } catch {}
 

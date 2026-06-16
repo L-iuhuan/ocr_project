@@ -130,17 +130,25 @@ class TaskWorker {
 
   runTasksOnce(tasks: Task[]): Promise<Task[]> {
     const ids = new Set(tasks.map(t => t.jobId));
+    // Safety timeout (12h) prevents permanent callback leak if tasks are removed mid-run.
     return new Promise(resolve => {
       const previousOnUpdate = this.onUpdate;
+      let settled = false;
+      const resolveOnce = (value: Task[]) => {
+        if (settled) return;
+        settled = true;
+        this.onUpdate = previousOnUpdate;
+        resolve(value);
+      };
       const finishIfDone = (allTasks: Task[]) => {
         previousOnUpdate?.(allTasks);
         const selected = allTasks.filter(t => ids.has(t.jobId));
         if (selected.length === ids.size && selected.every(t => TERMINAL_STATES.includes(t.state))) {
-          this.onUpdate = previousOnUpdate;
-          resolve(selected);
+          resolveOnce(selected);
         }
       };
       this.onUpdate = finishIfDone;
+      setTimeout(() => resolveOnce(this.queue.filter((t: Task) => ids.has(t.jobId))), 12 * 3600_000);
       this.addTasks(tasks);
       finishIfDone(this.queue);
     });
@@ -280,12 +288,18 @@ class TaskWorker {
       const task = this.queue.find(t => t.state === 'pending');
       if (!task) break;
 
+      // Register abort controller BEFORE changing state, so shutdown()
+      // can abort tasks even when processTask hasn't started yet.
+      const abortController = new AbortController();
+      setMaxListeners(100, abortController.signal);
+      this.abortControllers.set(task.jobId, abortController);
+
       task.state = 'preprocessing';
       task.startedAt = task.startedAt || Date.now();
       this.active++;
       this.emitUpdate();
 
-      void this.processTask(task)
+      void this.processTask(task, abortController)
         .catch(err => {
           // Ignore cancellation errors — they are expected
           if (err.code === 'CANCELLED') {
@@ -307,12 +321,7 @@ class TaskWorker {
     }
   }
 
-  private async processTask(task: Task): Promise<void> {
-    // Create AbortController for this task
-    const abortController = new AbortController();
-    setMaxListeners(100, abortController.signal);
-    this.abortControllers.set(task.jobId, abortController);
-
+  private async processTask(task: Task, abortController: AbortController): Promise<void> {
     // Guard: if cancelled before we started, bail out immediately
     if (this.isTaskCancelled(task)) {
       throw Object.assign(new Error('任务已取消'), { code: 'CANCELLED' });
@@ -929,8 +938,15 @@ class TaskWorker {
     const { PDFDocument } = await import('pdf-lib');
     const srcDoc = await PDFDocument.load(readFileSync(sourcePath), { ignoreEncryption: true });
     const totalPages = srcDoc.getPageCount();
-    const start = Math.max(0, Math.min(totalPages - 1, chunk.pageStart - 1));
-    const end = Math.max(start + 1, Math.min(totalPages, chunk.pageEnd));
+    const start = Math.max(0, Math.min(totalPages - 1, (chunk.pageStart || 1) - 1));
+    const end = Math.max(start + 1, Math.min(totalPages, chunk.pageEnd || totalPages));
+    // Clamp metadata to actual extracted range to avoid misleading page labels
+    const actualStart = start + 1;
+    const actualEnd = end;
+    if (totalPages < (chunk.pageStart || 1)) {
+      this.log('原始文件只有 ' + totalPages + ' 页，分块的页号' + chunk.pageStart + '超出范围，按实际页重建',
+        'warn', task.jobId);
+    }
     const subDoc = await PDFDocument.create();
     const pages = await subDoc.copyPages(srcDoc, srcDoc.getPageIndices().slice(start, end));
     for (const page of pages) subDoc.addPage(page);
@@ -938,11 +954,14 @@ class TaskWorker {
     const chunksDir = resolveChunksDir(task.jobId, task.outputDir);
     const rebuiltPath = join(
       chunksDir,
-      basename(sourcePath, '.pdf') + '_retry_p' + chunk.pageStart + '-' + chunk.pageEnd + '_' + task.jobId.slice(-6) + '.pdf'
+      basename(sourcePath, '.pdf') + '_retry_p' + actualStart + '-' + actualEnd + '_' + task.jobId.slice(-6) + '.pdf'
     );
     writeFileSync(rebuiltPath, await subDoc.save());
     chunk.chunkPath = rebuiltPath;
-    this.log('已重建缺失分块: 第' + chunk.pageStart + '-' + chunk.pageEnd + '页', 'info', task.jobId);
+    chunk.pageStart = actualStart;
+    chunk.pageEnd = actualEnd;
+    this.log('已重建缺失分块: 第' + actualStart + '-' + actualEnd + '页' +
+      (totalPages < (chunk.pageStart || 1) ? '（原始文件仅 ' + totalPages + ' 页，已按实际范围调整）' : ''), 'info', task.jobId);
   }
 
   /**

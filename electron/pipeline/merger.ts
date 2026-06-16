@@ -99,10 +99,13 @@ export function collectImages(
         const mdRel = relative(mdDir, imgPath);
         if (mdRel && mdRel !== imgPath) {
           const normalizedMdRel = mdRel.replace(/\\/g, '/');
-          mappings.set(normalizedMdRel, destPath);
+          // Prefer the first-seen mapping for a given logical path to avoid
+          // a later chunk's image silently overwriting an earlier chunk's entry.
+          if (!mappings.has(normalizedMdRel)) mappings.set(normalizedMdRel, destPath);
           // Also map with ./ prefix (common in some markdown generators)
           if (!normalizedMdRel.startsWith('./') && !normalizedMdRel.startsWith('../')) {
-            mappings.set('./' + normalizedMdRel, destPath);
+            const prefixed = './' + normalizedMdRel;
+            if (!mappings.has(prefixed)) mappings.set(prefixed, destPath);
           }
         }
 
@@ -110,7 +113,8 @@ export function collectImages(
         if (mdDir !== chunkDir) {
           const chunkRel = relative(chunkDir, imgPath);
           if (chunkRel && chunkRel !== imgPath && chunkRel !== mdRel) {
-            mappings.set(chunkRel.replace(/\\/g, '/'), destPath);
+            const key = chunkRel.replace(/\\/g, '/');
+            if (!mappings.has(key)) mappings.set(key, destPath);
           }
         }
       } catch (e) {
