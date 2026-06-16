@@ -43,10 +43,18 @@ async function runHeadlessParseInner(options: HeadlessParseOptions): Promise<{ c
   const providers = bootstrapProviders(settings);
   taskWorker.configure({
     onUpdate: () => {},
-    onLog: entry => log(formatLog(entry.level, entry.message, entry.jobId)),
+    onLog: entry => {
+      const msg = formatLog(entry.level, entry.message, entry.jobId);
+      log(msg);
+      if (options.json) process.stderr.write(msg + '\n');
+    },
     onProgress: progress => {
       if (!options.json && progress.total > 0) {
         process.stdout.write(`\r进度: ${progress.completed + progress.failed}/${progress.total} 任务, ${progress.chunkCompleted}/${progress.chunkTotal} 分块`);
+      }
+      if (options.json && progress.total > 0 && progress.chunkCompleted !== (progress as any)._lastReported) {
+        (progress as any)._lastReported = progress.chunkCompleted;
+        process.stderr.write(`进度: ${progress.completed + progress.failed}/${progress.total} 任务, ${progress.chunkCompleted}/${progress.chunkTotal} 分块\n`);
       }
     },
   }, { persistTasks: false, settingsProvider: () => settings });
