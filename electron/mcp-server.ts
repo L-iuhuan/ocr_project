@@ -114,7 +114,9 @@ function runOcrflowCli(input: ParseInput): Promise<{ exitCode: number; summaryTe
         cwd,
         windowsHide: true,
         env: (() => {
-          const safe = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'USER', 'LANG', 'LC_ALL', 'SHELL', 'SystemRoot', 'OCRFLOW_COMMAND'];
+          const safe = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'USER', 'LANG', 'LC_ALL', 'SHELL',
+            'SystemRoot', 'APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH',
+            'OCRFLOW_COMMAND'];
           const env: Record<string, string> = {};
           for (const key of safe) {
             const val = process.env[key];
