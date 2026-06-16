@@ -31,7 +31,7 @@ const APP_VERSION: string = (() => {
   return '0.0.0';
 })();
 
-let activeRun = false;
+let chain = Promise.resolve();
 
 async function main(): Promise<void> {
   const server = new McpServer({ name: 'ocrflow', version: APP_VERSION });
@@ -46,9 +46,15 @@ async function main(): Promise<void> {
     async (input: any) => {
       const normalized = normalizeInput(input as ParseInput);
       if ('error' in normalized) return toolError(normalized.error, { ok: false, error: normalized.error });
-      if (activeRun) return toolError('OCRFlow is already processing another MCP request. Wait for it to finish and retry.', { ok: false, error: 'busy' });
 
-      activeRun = true;
+      // Chain sequential calls without rejecting. Each call waits for the
+      // previous one to finish, so multiple parse_documents invocations are
+      // processed in order rather than returning a busy error.
+      let release: () => void;
+      const previous = chain;
+      chain = new Promise<void>(r => { release = r; });
+      await previous;
+
       try {
         const result = await runOcrflowCli(normalized.value);
         const structured = safeSummary(result.summaryText) || { ok: result.exitCode === 0, raw: result.summaryText };
@@ -59,7 +65,7 @@ async function main(): Promise<void> {
           content: [{ type: 'text' as const, text: JSON.stringify(structured, null, 2) }],
         };
       } finally {
-        activeRun = false;
+        release!();
       }
     },
   );
