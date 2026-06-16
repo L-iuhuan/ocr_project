@@ -36,7 +36,10 @@ let chain = Promise.resolve();
 let srv: McpServer | null = null;
 
 async function main(): Promise<void> {
-  srv = new McpServer({ name: 'ocrflow', version: APP_VERSION });
+  srv = new McpServer(
+    { name: 'ocrflow', version: APP_VERSION },
+    { capabilities: { logging: {} } },
+  );
 
   srv.registerTool(
     'parse_documents',
@@ -57,8 +60,10 @@ async function main(): Promise<void> {
       chain = new Promise<void>(r => { release = r; });
       await previous;
 
+      let logCount = 0;
       const log = (msg: string, level: 'notice' | 'warning' | 'error' = 'notice') => {
-        srv?.sendLoggingMessage({ level, data: msg }).catch(() => {});
+        logCount++;
+        srv?.server.sendLoggingMessage({ level, data: msg }).catch(() => {});
       };
       log('开始处理 ' + normalized.value.paths.length + ' 个路径');
 
@@ -66,6 +71,7 @@ async function main(): Promise<void> {
         const result = await runOcrflowCli(normalized.value, log);
         const structured = safeSummary(result.summaryText) || { ok: result.exitCode === 0, raw: result.summaryText };
         const isError = result.exitCode !== 0 || (typeof structured === 'object' && structured !== null && (structured as any).ok === false);
+        (structured as any)._logCount = logCount;
         return {
           isError,
           structuredContent: structured as Record<string, unknown>,
