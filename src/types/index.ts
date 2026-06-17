@@ -197,6 +197,8 @@ export interface ElectronAPI {
   getProviderQuotas(): Promise<unknown[]>;
   getAppVersion(): Promise<string>;
   getMcpConfig(): Promise<string>;
+  checkUpdate(): Promise<{ ok: boolean; hasUpdate?: boolean; currentVersion?: string; latestVersion?: string; releaseUrl?: string; message?: string }>;
+  openExternal(url: string): void;
   onTasksUpdate(cb: (tasks: unknown[]) => void): () => void;
   onLog(cb: (log: unknown) => void): () => void;
   onProgress(cb: (progress: unknown) => void): () => void;

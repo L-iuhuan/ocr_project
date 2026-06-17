@@ -350,6 +350,43 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('get-app-version', () => app.getVersion());
 
+  ipcMain.handle('check-update', async () => {
+    try {
+      const resp = await axios.get('https://api.github.com/repos/L-iuhuan/ocr_project/releases/latest', {
+        timeout: 15000,
+        headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'OCRFlow-Update' },
+      });
+      const latestTag = resp.data?.tag_name;
+      const releaseUrl = resp.data?.html_url || 'https://github.com/L-iuhuan/ocr_project/releases/latest';
+      if (!latestTag) return { ok: false, message: '无法获取最新版本信息' };
+
+      const currentVersion = 'v' + app.getVersion();
+      const hasUpdate = latestTag !== currentVersion;
+      return {
+        ok: true,
+        hasUpdate,
+        currentVersion,
+        latestVersion: latestTag,
+        releaseUrl,
+      };
+    } catch (err: any) {
+      if (err.code === 'ECONNREFUSED' || err.code === 'ENOTFOUND' || err.code === 'ETIMEDOUT' || err.response?.status === 403) {
+        return { ok: false, message: '无法连接更新服务器（GitHub），请稍后重试或手动访问官网' };
+      }
+      return { ok: false, message: '检查更新失败: ' + (err.message || '未知错误') };
+    }
+  });
+
+  ipcMain.handle('open-external', async (_e, url: unknown) => {
+    if (typeof url !== 'string' || !url) return;
+    // Only allow HTTPS URLs to prevent command injection
+    if (!url.startsWith('https://')) {
+      console.error('[IPC] open-external blocked non-HTTPS URL:', url);
+      return;
+    }
+    shell.openExternal(url);
+  });
+
   ipcMain.handle('get-mcp-config', () => {
     const appPath = app.getAppPath();
     const mcpServerJs = app.isPackaged

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 
 export default function AboutView() {
   const [appVersion, setAppVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'up-to-date' | 'update-available' | 'error'>('idle');
+  const [updateInfo, setUpdateInfo] = useState<{ message: string; releaseUrl?: string }>({ message: '' });
 
   useEffect(() => {
     const api = window.electronAPI;
@@ -16,6 +18,37 @@ export default function AboutView() {
     }
   }, []);
 
+  const checkForUpdates = async () => {
+    setUpdateStatus('checking');
+    try {
+      const result = await window.electronAPI?.checkUpdate?.();
+      if (!result || !result.ok) {
+        setUpdateStatus('error');
+        setUpdateInfo({ message: result?.message || '检查更新失败' });
+        return;
+      }
+      if (result.hasUpdate) {
+        setUpdateStatus('update-available');
+        setUpdateInfo({
+          message: `发现新版本 ${result.latestVersion}（当前 ${result.currentVersion}）`,
+          releaseUrl: result.releaseUrl,
+        });
+      } else {
+        setUpdateStatus('up-to-date');
+        setUpdateInfo({ message: '已是最新版本' });
+      }
+    } catch {
+      setUpdateStatus('error');
+      setUpdateInfo({ message: '检查更新失败，请检查网络连接' });
+    }
+  };
+
+  const handleDownloadUpdate = () => {
+    if (updateInfo.releaseUrl) {
+      window.electronAPI?.openExternal?.(updateInfo.releaseUrl);
+    }
+  };
+
   return (
     <div className="about-view">
       <div className="about-hero">
@@ -24,6 +57,34 @@ export default function AboutView() {
         <p className="about-desc">
           多引擎 OCR 文档批量处理工具 — 支持 PDF、PPTX、DOCX、XLSX 及多种图片格式的智能识别与结构化输出，提供 MinerU Cloud、PaddleOCR Cloud、本地 OCR 引擎三种处理引擎。
         </p>
+        <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+          <button
+            className="test-btn"
+            onClick={checkForUpdates}
+            disabled={updateStatus === 'checking'}
+            style={{ padding: '5px 16px', fontWeight: 600, fontSize: 12 }}
+          >
+            {updateStatus === 'checking' ? '检查中...' : '检查更新'}
+          </button>
+          {updateStatus === 'up-to-date' && (
+            <span style={{ fontSize: 12, color: 'var(--green)' }}>✓ {updateInfo.message}</span>
+          )}
+          {updateStatus === 'update-available' && (
+            <span style={{ fontSize: 12, color: 'var(--amber)' }}>
+              {updateInfo.message}
+              <button
+                className="test-btn success"
+                onClick={handleDownloadUpdate}
+                style={{ marginLeft: 8, padding: '3px 10px', fontSize: 11 }}
+              >
+                前往下载
+              </button>
+            </span>
+          )}
+          {updateStatus === 'error' && (
+            <span style={{ fontSize: 12, color: 'var(--red)' }}>✗ {updateInfo.message}</span>
+          )}
+        </div>
       </div>
 
       <div className="about-section">
