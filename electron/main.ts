@@ -9,6 +9,23 @@ import { pythonBridge } from './python-bridge';
 let mainWindow: BrowserWindow | null = null;
 let isHeadlessRun = false;
 
+// Single-instance lock: NSIS installer will try to launch the updated exe
+// while the old version is still running. The old instance detects the
+// second-instance event, quits gracefully, and the installer proceeds.
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    taskWorker.shutdown().finally(() => {
+      pythonBridge.stop().finally(() => app.exit(0));
+    });
+  });
+
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') app.quit();
+  });
+
 function createWindow() {
   // Remove default File/Edit menu - useless for our productivity tool
   Menu.setApplicationMenu(null);
@@ -103,20 +120,18 @@ app.whenReady().then(async () => {
   createWindow();
 });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit();
-});
+  app.on('before-quit', (event) => {
+    // Prevent immediate exit so cleanup Promises have time to settle.
+    event.preventDefault();
+    Promise.allSettled([
+      taskWorker.shutdown().catch(e => console.error('[Main] taskWorker shutdown failed:', e.message || e)),
+      pythonBridge.stop().catch(e => console.error('[Main] pythonBridge.stop failed:', e.message || e)),
+    ]).finally(() => app.exit());
+  });
 
-app.on('before-quit', (event) => {
-  // Prevent immediate exit so cleanup Promises have time to settle.
-  event.preventDefault();
-  Promise.allSettled([
-    taskWorker.shutdown().catch(e => console.error('[Main] taskWorker shutdown failed:', e.message || e)),
-    pythonBridge.stop().catch(e => console.error('[Main] pythonBridge.stop failed:', e.message || e)),
-  ]).finally(() => app.exit());
-});
+  app.on('activate', () => {
+    if (!isHeadlessRun && BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
 
-app.on('activate', () => {
-  if (!isHeadlessRun && BrowserWindow.getAllWindows().length === 0) createWindow();
-});
+}
 
